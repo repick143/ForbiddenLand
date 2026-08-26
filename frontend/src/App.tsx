@@ -10,10 +10,10 @@ import {
 } from "lucide-react";
 
 import { getHealth, getMarketBars, getSecurities } from "./api/client";
+import { getDefaultDateRange } from "./dateRange";
 import type { HealthResponse, MarketBarsResponse, Security } from "./types";
 
-const DEFAULT_START = "2024-01-01";
-const DEFAULT_END = "2024-03-31";
+const DEFAULT_DATE_RANGE = getDefaultDateRange();
 
 function formatNumber(value: number | null, digits = 2): string {
   return value === null ? "--" : value.toLocaleString("zh-CN", { maximumFractionDigits: digits });
@@ -53,8 +53,8 @@ function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [securities, setSecurities] = useState<Security[]>([]);
   const [selectedSymbol, setSelectedSymbol] = useState("688256");
-  const [startDate, setStartDate] = useState(DEFAULT_START);
-  const [endDate, setEndDate] = useState(DEFAULT_END);
+  const [startDate, setStartDate] = useState(DEFAULT_DATE_RANGE.startDate);
+  const [endDate, setEndDate] = useState(DEFAULT_DATE_RANGE.endDate);
   const [adjust, setAdjust] = useState<"" | "qfq" | "hfq">("qfq");
   const [market, setMarket] = useState<MarketBarsResponse | null>(null);
   const [loading, setLoading] = useState(false);

@@ -8,7 +8,7 @@ fastapi = pytest.importorskip("fastapi")
 pytest.importorskip("httpx")
 from fastapi.testclient import TestClient
 
-from forbiddenland.api.app import create_app
+from forbiddenland.api.app import DEFAULT_API_PORT, create_app
 from forbiddenland.application.market_service import (
     MarketDataProviderError,
     MarketDataService,
@@ -65,6 +65,10 @@ class FakeProvider:
 class FailingProvider(FakeProvider):
     def fetch_history(self, query: MarketQuery) -> MarketDataResult:
         raise MarketDataProviderError("provider unavailable")
+
+
+def test_backend_default_port_is_9092() -> None:
+    assert DEFAULT_API_PORT == 9092
 
 
 def test_health_and_security_routes_expose_service_boundary() -> None:

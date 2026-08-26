@@ -132,7 +132,9 @@ npm run dev
 ```
 
 开发时前端运行在 `http://127.0.0.1:5173`，`/api` 请求由 Vite 转发到
-`http://127.0.0.1:8000`。后端提供 `/api/v1/health`、`/api/v1/market/securities` 和
+`http://127.0.0.1:9092`。后端默认监听 `9092` 端口（可用 `FORBIDDENLAND_API_PORT` 覆盖）。
+查询表单默认使用本地日期的前一个月到今天，两个日期均可手动修改。后端提供
+`/api/v1/health`、`/api/v1/market/securities` 和
 `/api/v1/market/bars`，OpenAPI 契约可用 `python scripts/export_openapi.py` 更新到
 `contracts/openapi.json`。生产前端使用 `npm run build` 生成静态资源，仍通过同一 API 契约访问
 后端。

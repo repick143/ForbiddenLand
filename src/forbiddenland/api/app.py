@@ -13,6 +13,8 @@ from ..config import CompatibilityConfig
 from ..infrastructure.market_data.akshare_provider import AkShareMarketProvider
 from .routes import router
 
+DEFAULT_API_PORT = 9092
+
 
 def _cors_origins() -> list[str]:
     configured = os.environ.get(
@@ -52,7 +54,7 @@ def main() -> None:
     import uvicorn
 
     host = os.environ.get("FORBIDDENLAND_API_HOST", "127.0.0.1")
-    port = int(os.environ.get("FORBIDDENLAND_API_PORT", "8000"))
+    port = int(os.environ.get("FORBIDDENLAND_API_PORT", str(DEFAULT_API_PORT)))
     uvicorn.run(app, host=host, port=port)
 
 

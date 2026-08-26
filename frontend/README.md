@@ -12,11 +12,14 @@ npm run dev
 ```
 
 The Vite development server runs on `http://127.0.0.1:5173` and proxies `/api` to the backend at
-`http://127.0.0.1:8000`. Start the backend from the repository root in another terminal:
+`http://127.0.0.1:9092`. Start the backend from the repository root in another terminal:
 
 ```text
 python -m forbiddenland.api.app
 ```
+
+The market query form defaults to the local calendar date one month earlier through today; both
+dates remain editable.
 
 Create a production bundle with `npm run build`. Frontend state, formatting, and chart rendering
 belong here; market-data access, calculations, provenance, and AKQuant execution belong to the

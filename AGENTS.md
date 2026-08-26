@@ -120,6 +120,11 @@ focused on durable engineering constraints. Add project-specific rules as the co
   backend through versioned API contracts and must never open DuckDB/Parquet or call AkShare or
   AKQuant directly. Keep API routes thin; market-data access, calculations, provenance, and
   backtest orchestration belong to backend application/infrastructure layers.
+- The local FastAPI service listens on `127.0.0.1:9092` by default, and the Vite development
+  proxy must target that port. Keep `FORBIDDENLAND_API_PORT` overrides and frontend proxy changes
+  documented together.
+- The frontend's initial market query range is calculated at runtime from the local calendar date:
+  one calendar month before today through today. Do not replace this with a frozen date literal.
 - Keep calculations deterministic where possible: pass data and parameters explicitly instead of
   reading global state inside analysis functions.
 - Preserve raw source values until normalization; do not silently correct, fill, or discard invalid
