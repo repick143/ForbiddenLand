@@ -169,6 +169,10 @@ focused on durable engineering constraints. Add project-specific rules as the co
 - Inspect `git status` and the complete diff before committing.
 - Preserve user changes and unrelated untracked files.
 - Keep commits narrowly scoped and use an imperative, descriptive commit message.
+- When a feature changes a durable project behavior, data contract, workflow, or engineering
+  constraint, update the applicable `AGENTS.md` in the same change. Record stable rules and
+  boundaries, not transient implementation details; review the rule diff together with the feature
+  diff before committing.
 - Do not commit `.env` files, credentials, downloaded market data, caches, databases, or generated
   reports unless the task explicitly requires a reviewed fixture or artifact.
 - Do not rewrite published history or use destructive Git commands unless explicitly requested.
