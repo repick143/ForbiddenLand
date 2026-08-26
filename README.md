@@ -49,6 +49,7 @@ python scripts/bootstrap.py
 ```bash
 python scripts/bootstrap.py --profile core  # 仅项目和 AKQuant
 python scripts/bootstrap.py --profile data  # 加入 AKShare、DuckDB 和 Parquet
+python scripts/bootstrap.py --profile web   # 后端及其数据依赖（FastAPI、Uvicorn、AkShare、DuckDB）
 python scripts/bootstrap.py --profile dev   # 加入测试和 Ruff
 python scripts/bootstrap.py --profile full  # 以上全部内容（默认）
 ```
@@ -86,6 +87,9 @@ Windows 命令提示符也可以使用：
 项目不会把账号、密钥或本地环境配置提交到 Git。AKQuant 从 PyPI 提供 macOS 和 Windows 的
 预编译包；如果运行在没有匹配 wheel 的架构上，从源码安装时需要 Rust 工具链。
 
+前端使用 Node `22.14.x`，版本记录在 `.node-version` 和 `frontend/package.json`。初始化 Python
+环境不会自动安装 Node 依赖；进入 `frontend/` 后执行 `npm install`。
+
 ## 组件边界
 
 ```text
@@ -100,6 +104,38 @@ AKShare -> Parquet 原始快照 -> DuckDB 存储/查询 -> 标准化数据
 
 回测不得在运行过程中临时请求实时数据。应先保存数据源、抓取时间、复权方式和数据版本，
 再使用固定快照执行回测。
+
+## 前后端服务边界
+
+项目采用独立的 Python 后端服务和 React 前端项目：
+
+```text
+浏览器 frontend/ -> FastAPI /api/v1 -> application 用例 -> provider/storage/AKQuant
+                                                     -> DuckDB、Parquet 或远程 AkShare
+```
+
+前端只负责页面、交互、格式化和图表渲染，不直接打开 DuckDB/Parquet，也不直接调用 AkShare
+或 AKQuant。后端 API 是数据访问、计算、数据来源和回测状态的唯一入口。
+
+启动后端（仓库根目录）：
+
+```text
+python -m forbiddenland.api.app
+```
+
+启动前端（另一个终端）：
+
+```text
+cd frontend
+npm install
+npm run dev
+```
+
+开发时前端运行在 `http://127.0.0.1:5173`，`/api` 请求由 Vite 转发到
+`http://127.0.0.1:8000`。后端提供 `/api/v1/health`、`/api/v1/market/securities` 和
+`/api/v1/market/bars`，OpenAPI 契约可用 `python scripts/export_openapi.py` 更新到
+`contracts/openapi.json`。生产前端使用 `npm run build` 生成静态资源，仍通过同一 API 契约访问
+后端。
 
 ## 研究方向
 
@@ -172,6 +208,9 @@ python -m pytest tests/test_akshare_compat.py -q
 ```text
 .
 ├── src/forbiddenland/   # Python 源码
+├── frontend/             # React/Vite/TypeScript 前端
+├── contracts/            # OpenAPI 等轻量接口契约
+├── research/             # 独立研究方向
 ├── tests/                # 自动化测试
 ├── data/raw/             # 原始数据，仅保存在本地
 ├── data/processed/       # 清洗后的本地数据

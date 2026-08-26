@@ -11,8 +11,9 @@ def test_project_python_version_is_pinned() -> None:
 def test_install_target_profiles() -> None:
     assert install_target("core") == "."
     assert install_target("data") == ".[data]"
+    assert install_target("web") == ".[data,web]"
     assert install_target("dev") == ".[dev]"
-    assert install_target("full") == ".[dev,data]"
+    assert install_target("full") == ".[dev,data,web]"
 
 
 def test_venv_python_uses_platform_layout() -> None:

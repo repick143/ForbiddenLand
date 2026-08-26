@@ -28,7 +28,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--profile",
-        choices=("core", "data", "dev", "full"),
+        choices=("core", "data", "web", "dev", "full"),
         default="full",
         help="Dependency profile to install (default: full).",
     )
@@ -133,8 +133,10 @@ def install_target(profile: str) -> str:
     extras = {
         "core": "",
         "data": "[data]",
+        # The API provider needs the data stack at runtime, so the web profile is self-contained.
+        "web": "[data,web]",
         "dev": "[dev]",
-        "full": "[dev,data]",
+        "full": "[dev,data,web]",
     }[profile]
     return f".{extras}"
 
@@ -153,8 +155,10 @@ def create_data_directories() -> None:
 
 def verify_imports(python: Path, profile: str) -> None:
     modules = ["forbiddenland", "akquant"]
-    if profile in {"data", "full"}:
+    if profile in {"data", "web", "full"}:
         modules.extend(["akshare", "duckdb", "pyarrow"])
+    if profile in {"web", "full"}:
+        modules.extend(["fastapi", "uvicorn"])
     module_literal = repr(modules)
     code = (
         "import importlib, importlib.metadata\n"

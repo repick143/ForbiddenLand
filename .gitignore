@@ -31,6 +31,14 @@ data/raw/
 data/processed/
 data/cache/
 reports/
+
+# Frontend dependencies and build output
+node_modules/
+frontend/dist/
+frontend/.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 *.sqlite3
 *.db
 

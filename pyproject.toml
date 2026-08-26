@@ -21,9 +21,14 @@ data = [
     "pandas>=2.2.0",
     "pyarrow>=14",
 ]
+web = [
+    "fastapi>=0.115,<1",
+    "uvicorn>=0.34,<1",
+]
 dev = [
     "pytest>=8,<9",
     "ruff>=0.14,<1",
+    "httpx>=0.27,<1",
 ]
 
 [tool.setuptools.packages.find]

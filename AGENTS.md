@@ -109,6 +109,10 @@ focused on durable engineering constraints. Add project-specific rules as the co
 ## Code Design
 
 - Keep data acquisition, normalization, analysis, and presentation responsibilities separable.
+- The frontend is an independent project under `frontend/`; it must communicate with the Python
+  backend through versioned API contracts and must never open DuckDB/Parquet or call AkShare or
+  AKQuant directly. Keep API routes thin; market-data access, calculations, provenance, and
+  backtest orchestration belong to backend application/infrastructure layers.
 - Keep calculations deterministic where possible: pass data and parameters explicitly instead of
   reading global state inside analysis functions.
 - Preserve raw source values until normalization; do not silently correct, fill, or discard invalid
