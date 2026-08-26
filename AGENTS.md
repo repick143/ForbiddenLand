@@ -1,0 +1,102 @@
+# AGENTS.md
+
+This file defines repository-level instructions for Codex and other coding agents. Keep it
+focused on durable engineering constraints. Add project-specific rules as the codebase evolves.
+
+## Project Scope
+
+- This is a personal A-share research and analysis project implemented in Python.
+- Treat generated analysis as research output, not investment advice.
+- Prefer reproducible calculations and explicit data-quality reporting over opaque conclusions.
+- Do not introduce business rules, scoring weights, or trading assumptions unless the task defines
+  them or an existing project document records them.
+
+## Python Environment
+
+- Use the Python version declared in `.python-version`; do not change the user's global pyenv
+  configuration.
+- Keep the package compatible with the `requires-python` range in `pyproject.toml`.
+- Install project dependencies with `python -m pip install -e ".[dev,data]"` when needed.
+- Add runtime and development dependencies to the appropriate group in `pyproject.toml`.
+- Ask before adding a new production dependency when the standard library or an existing
+  dependency can reasonably solve the problem.
+
+## Repository Layout
+
+- Place importable production code under `src/forbiddenland/`.
+- Place tests under `tests/`, mirroring the source layout when practical.
+- Keep downloaded source data under `data/raw/`, transformed local data under `data/processed/`,
+  and generated reports under `reports/`.
+- Do not commit ignored runtime data merely to make a local test pass. Use small, documented test
+  fixtures when stable sample data is required.
+- Add nested `AGENTS.md` files only when a subtree needs materially different rules.
+
+## Code Design
+
+- Keep data acquisition, normalization, analysis, and presentation responsibilities separable.
+- Keep calculations deterministic where possible: pass data and parameters explicitly instead of
+  reading global state inside analysis functions.
+- Preserve raw source values until normalization; do not silently correct, fill, or discard invalid
+  data.
+- Represent A-share security codes as strings so leading zeroes are preserved.
+- Distinguish missing data from numeric zero throughout parsing, calculation, and reporting.
+- Record or propagate enough context to identify the data source, observation date, adjustment mode,
+  and relevant calculation parameters.
+- Prefer small modules and direct code over speculative abstraction. Introduce shared abstractions
+  only after they remove concrete duplication or enforce a real domain boundary.
+
+## Formatting And Style
+
+- Use UTF-8 source files, LF line endings, four-space indentation, and no tabs.
+- Follow the Ruff configuration in `pyproject.toml`; the current line-length limit is 100.
+- Use type annotations for public functions and for internal interfaces where they clarify data
+  shape or optional values.
+- Use descriptive English identifiers. Chinese text is appropriate for user-facing reports and
+  A-share domain labels when it improves clarity.
+- Keep comments focused on non-obvious domain decisions, data caveats, or algorithmic reasoning.
+- Do not reformat or refactor unrelated files as part of a scoped change.
+
+## Errors And Data Quality
+
+- Do not silently swallow network, parsing, or data-quality failures.
+- When partial results are valid, retain them and report the affected source, symbol, field, and
+  reason for the missing result.
+- Do not silently substitute stale cached values after a live-data failure.
+- Avoid broad exception handling unless it adds context and preserves the original exception or
+  deliberately isolates one failed item in a batch.
+- Never log or commit credentials, access tokens, cookies, or private account data.
+
+## Tests And Verification
+
+- Add or update tests when behavior changes.
+- Cover normal values, missing values, boundary cases, and malformed source data for calculation and
+  parsing code.
+- Mock external services in unit tests; tests must not depend on a live market-data endpoint.
+- Before completing a change, run the checks relevant to the files changed. The default full checks
+  are:
+
+  ```bash
+  python -m pytest
+  ruff format --check .
+  ruff check .
+  python -m compileall -q src tests
+  git diff --check
+  ```
+
+- If a check cannot run because a tool or dependency is unavailable, state that explicitly instead
+  of reporting it as passed.
+
+## Git Discipline
+
+- Inspect `git status` and the complete diff before committing.
+- Preserve user changes and unrelated untracked files.
+- Keep commits narrowly scoped and use an imperative, descriptive commit message.
+- Do not commit `.env` files, credentials, downloaded market data, caches, databases, or generated
+  reports unless the task explicitly requires a reviewed fixture or artifact.
+- Do not rewrite published history or use destructive Git commands unless explicitly requested.
+
+## Future Rules
+
+Add confirmed conventions here or in a focused document as the project develops. Likely areas
+include data-provider contracts, package boundaries, financial indicator definitions, adjustment and
+calendar rules, report schemas, backtest assumptions, and release or CI requirements.
