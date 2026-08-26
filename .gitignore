@@ -34,6 +34,12 @@ reports/
 *.sqlite3
 *.db
 
+# Large analytical data artifacts; keep payloads outside Git history.
+*.parquet
+*.duckdb
+*.duckdb.wal
+*.duckdb.tmp
+
 # Editor and operating-system files
 .DS_Store
 .idea/

@@ -29,8 +29,10 @@ focused on durable engineering constraints. Add project-specific rules as the co
   replace it with another engine without an explicit project decision.
 - AKShare (`akshare`) is used for data acquisition only; it is not the backtesting engine or the
   canonical storage layer.
-- Use DuckDB and Parquet for local analytical storage and normalized snapshots. Strategies should
-  consume normalized, time-bounded data rather than call a live provider during a backtest.
+- Use DuckDB as the default local analytical storage and query layer. Use Parquet for source
+  snapshots, interchange, and explicitly versioned exports; do not introduce another primary
+  storage engine without an explicit project decision. Strategies should consume normalized,
+  time-bounded data rather than call a live provider during a backtest.
 - Keep provider adapters separate from strategy and execution logic so the data source can be
   changed or cross-checked without rewriting strategies.
 - Pin or record the AKQuant version when a result depends on engine behavior, especially order
@@ -66,6 +68,25 @@ focused on durable engineering constraints. Add project-specific rules as the co
 - Do not commit ignored runtime data merely to make a local test pass. Use small, documented test
   fixtures when stable sample data is required.
 - Add nested `AGENTS.md` files only when a subtree needs materially different rules.
+
+## Large Data Artifacts
+
+- Treat downloaded or generated Parquet, DuckDB, and other large analytical files as local or
+  external artifacts. Never commit their payloads to Git.
+- Keep raw source snapshots under `data/raw/`, normalized or derived datasets under
+  `data/processed/`, and rebuildable local caches under `data/cache/`. Keep each dataset family
+  together and include the source and as-of date in new filenames when those values are known.
+- Keep only lightweight control-plane files in Git: acquisition/transformation code, schema notes,
+  manifests, checksums, and reproducibility metadata. Store large payloads in approved object
+  storage or release artifacts; Git LFS is not the default for this repository.
+- Before handing off or changing a data artifact, inspect `git status --short` and verify
+  `git check-ignore -v <path>`. An ignored local file being absent on another checkout is expected,
+  not an implementation failure. If a small fixture is genuinely required, put it under
+  `tests/fixtures/` and document why it is safe to track.
+- The initial `stock_basic_data.parquet` snapshot was inspected on 2026-08-26 as an A-share
+  security-master dataset with 5,892 rows and 16 columns. It belongs under
+  `data/raw/stock_basic_data.parquet`; its source/provider and effective date are not encoded and
+  must not be guessed.
 
 ## Code Design
 
@@ -108,6 +129,9 @@ focused on durable engineering constraints. Add project-specific rules as the co
 - Cover normal values, missing values, boundary cases, and malformed source data for calculation and
   parsing code.
 - Mock external services in unit tests; tests must not depend on a live market-data endpoint.
+- When a unit test needs concrete A-share securities, use 寒武纪 (`688256`), 拓荆科技 (`688072`),
+  and 生益科技 (`600183`) as the standard fixtures. Keep their codes as strings and use
+  deterministic local or in-memory data instead of fetching live quotes.
 - Before completing a change, run the checks relevant to the files changed. The default full checks
   are:
 
