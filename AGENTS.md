@@ -21,6 +21,27 @@ focused on durable engineering constraints. Add project-specific rules as the co
 - Ask before adding a new production dependency when the standard library or an existing
   dependency can reasonably solve the problem.
 
+## Cross-Platform Compatibility
+
+- All committed code, scripts, and developer tools must work on both macOS and Windows. If a
+  platform-specific behavior is unavoidable, document the reason, scope, and separate usage in
+  `README.md`.
+- Build filesystem paths with `pathlib.Path` or other standard cross-platform APIs. Do not hard-code
+  `/`, `~`, `/tmp`, `/bin/sh`, `/bin/zsh`, Windows drive letters, or platform-specific path strings.
+- Do not rely on case-sensitive filenames, executable permission bits, symlink behavior, or a
+  particular current working directory.
+- Invoke Python through `sys.executable` in application code and `python -m ...` in documentation;
+  do not assume that `python3`, Bash, Zsh, `sed`, `grep`, or `make` is available on Windows.
+- Use `subprocess` with an argument list and `shell=False` by default. Do not place shell pipelines,
+  redirection, quoting tricks, or shell-only syntax in reusable tools.
+- Use explicit text encodings and newline handling. Preserve source-specific encodings for imported
+  A-share files instead of relying on the operating system default.
+- Use `tempfile`, `os.environ`, `shutil`, and standard Python APIs for temporary files, environment
+  variables, executable lookup, and file operations. Avoid Unix-only signals, `fork`, `/dev/null`,
+  and shell startup-file assumptions.
+- Provide equivalent macOS and Windows instructions for setup, activation, and common commands.
+  When CI is added, run the relevant test and lint jobs on both operating systems.
+
 ## Repository Layout
 
 - Place importable production code under `src/forbiddenland/`.
