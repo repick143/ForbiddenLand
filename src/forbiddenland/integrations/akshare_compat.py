@@ -298,17 +298,40 @@ class LocalBackend:
             factor_expression if column == "adj_factor" else column
             for column in _DAILY_SOURCE_COLUMNS
         )
+        # Read only the requested interval plus its immediately preceding bar.  The preceding
+        # bar is needed to calculate the first return in a range and the opening value of a
+        # partial week/month, while keeping the large Parquet scan out of pandas.
         sql = f"""
-            SELECT {select_columns}
-            FROM read_parquet(?)
-            WHERE ts_code = ?
-              AND trade_date <= CAST(? AS DATE)
+            WITH requested AS (
+                SELECT {select_columns}
+                FROM read_parquet(?)
+                WHERE ts_code = ?
+                  AND trade_date BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
+            ), previous AS (
+                SELECT {select_columns}
+                FROM read_parquet(?)
+                WHERE ts_code = ?
+                  AND trade_date < CAST(? AS DATE)
+                ORDER BY trade_date DESC
+                LIMIT 1
+            )
+            SELECT * FROM previous
+            UNION ALL
+            SELECT * FROM requested
             ORDER BY trade_date
         """
         frame = self._query(
             self.daily_path,
             sql,
-            [str(self.daily_path), ts_code, end.isoformat()],
+            [
+                str(self.daily_path),
+                ts_code,
+                start.isoformat(),
+                end.isoformat(),
+                str(self.daily_path),
+                ts_code,
+                start.isoformat(),
+            ],
             "daily",
             duckdb,
             pandas,
@@ -330,15 +353,15 @@ class LocalBackend:
         ]
         return pandas.concat([before, requested], ignore_index=True)
 
-    def _factor_bases(self, ts_code: str, duckdb: Any, pandas: Any) -> tuple[float, float]:
+    def _latest_factor(self, ts_code: str, duckdb: Any, pandas: Any) -> float:
         sql = """
             SELECT adj_factor
             FROM read_parquet(?)
             WHERE ts_code = ? AND adj_factor IS NOT NULL
-            ORDER BY trade_date ASC
+            ORDER BY trade_date DESC
             LIMIT 1
         """
-        first = self._query(
+        result = self._query(
             self.daily_path,
             sql,
             [str(self.daily_path), ts_code],
@@ -346,21 +369,12 @@ class LocalBackend:
             duckdb,
             pandas,
         )
-        last = self._query(
-            self.daily_path,
-            sql.replace("ASC", "DESC"),
-            [str(self.daily_path), ts_code],
-            "daily",
-            duckdb,
-            pandas,
-        )
-        if first.empty or last.empty:
+        if result.empty:
             raise LocalDataError(f"No adjustment factor is available for {ts_code}")
-        first_factor = float(first.iloc[0]["adj_factor"])
-        last_factor = float(last.iloc[0]["adj_factor"])
-        if first_factor == 0 or last_factor == 0:
+        latest_factor = float(result.iloc[0]["adj_factor"])
+        if latest_factor == 0:
             raise LocalDataError(f"Adjustment factor for {ts_code} contains a zero value")
-        return first_factor, last_factor
+        return latest_factor
 
     @staticmethod
     def _numeric(frame: Any, pandas: Any, column: str) -> Any:
@@ -394,10 +408,11 @@ class LocalBackend:
         if adjust:
             if frame["adj_factor"].isna().any():
                 raise LocalDataError(f"adjustment factor is missing for one or more {ts_code} rows")
-            _, last_factor = self._factor_bases(ts_code, duckdb, pandas)
             # This snapshot uses a cumulative factor convention: hfq prices multiply by the
             # factor directly, while qfq prices normalize against the latest available factor.
-            ratio = frame["adj_factor"] / last_factor if adjust == "qfq" else frame["adj_factor"]
+            ratio = frame["adj_factor"]
+            if adjust == "qfq":
+                ratio = ratio / self._latest_factor(ts_code, duckdb, pandas)
             for column in ("open", "high", "low", "close"):
                 frame[column] = frame[column] * ratio
             # The adjusted series, rather than raw pre_close, defines the return around corporate
