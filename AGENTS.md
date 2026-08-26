@@ -15,11 +15,26 @@ focused on durable engineering constraints. Add project-specific rules as the co
 
 - Use the Python version declared in `.python-version`; do not change the user's global pyenv
   configuration.
+- The repository development baseline is Python 3.12.10. Run `python scripts/bootstrap.py` to
+  create or initialize the local environment.
 - Keep the package compatible with the `requires-python` range in `pyproject.toml`.
 - Install project dependencies with `python -m pip install -e ".[dev,data]"` when needed.
 - Add runtime and development dependencies to the appropriate group in `pyproject.toml`.
 - Ask before adding a new production dependency when the standard library or an existing
   dependency can reasonably solve the problem.
+
+## Quantitative Core
+
+- AKQuant (`akquant`) is the project's core quantitative research and backtesting engine. Do not
+  replace it with another engine without an explicit project decision.
+- AKShare (`akshare`) is used for data acquisition only; it is not the backtesting engine or the
+  canonical storage layer.
+- Use DuckDB and Parquet for local analytical storage and normalized snapshots. Strategies should
+  consume normalized, time-bounded data rather than call a live provider during a backtest.
+- Keep provider adapters separate from strategy and execution logic so the data source can be
+  changed or cross-checked without rewriting strategies.
+- Pin or record the AKQuant version when a result depends on engine behavior, especially order
+  execution, fees, risk checks, or market-rule handling.
 
 ## Cross-Platform Compatibility
 

@@ -7,19 +7,23 @@ name = "forbiddenland"
 version = "0.1.0"
 description = "Personal A-share stock research and analysis toolkit"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12,<3.13"
 authors = [{ name = "chen.chenn" }]
-dependencies = []
+dependencies = [
+    "akquant>=0.3.52,<0.4",
+]
 
 [project.optional-dependencies]
 data = [
-    "akshare>=1.16",
-    "numpy>=1.24",
-    "pandas>=2.0",
+    "akshare>=1.18,<2",
+    "duckdb>=1.4,<2",
+    "numpy>=2.2.2",
+    "pandas>=2.2.0",
+    "pyarrow>=14",
 ]
 dev = [
-    "pytest>=8.0",
-    "ruff>=0.6",
+    "pytest>=8,<9",
+    "ruff>=0.14,<1",
 ]
 
 [tool.setuptools.packages.find]
@@ -30,4 +34,4 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py312"

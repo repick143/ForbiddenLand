@@ -1,13 +1,15 @@
 # ForbiddenLand
 
-一个面向个人研究的 A 股股票分析工具，计划使用 Python 实现。
+一个面向个人研究的 A 股股票分析工具，使用 Python 实现。
 
-当前仓库处于初始化阶段，尚未提供数据抓取、选股或回测功能。项目会优先保证数据来源、计算过程和结论可以复核，再逐步增加自动化能力。
+项目以 AKQuant 作为核心量化研究与回测引擎，以 AKShare 获取公开数据，并使用 DuckDB/Parquet
+保存可复现的数据快照。项目会优先保证数据来源、计算过程和结论可以复核，再逐步增加自动化能力。
 
 ## 目标
 
 - 统一获取并整理 A 股行情、财务和交易日数据。
 - 将基本面、技术面和估值指标拆分为可测试的分析模块。
+- 使用 AKQuant 执行策略回测、组合管理和风险检查。
 - 支持按时间保存数据快照，避免用最新数据悄悄改写历史结论。
 - 生成适合个人复盘的结构化报告，并为后续回测保留接口。
 
@@ -21,7 +23,8 @@
 
 ## 环境准备
 
-仓库通过 `.python-version` 固定本地开发版本为 Python `3.11.11`。该版本已经安装在当前机器上，不会修改全局 pyenv 设置；项目声明的兼容下限仍为 Python 3.10。
+仓库通过 `.python-version` 固定本地开发版本为 Python `3.12.10`。该版本由 pyenv 管理，
+不会修改全局 pyenv 设置；项目要求 Python `3.12.x`。
 
 进入仓库后可以确认实际版本：
 
@@ -30,12 +33,34 @@ pyenv version
 python --version
 ```
 
-使用 pyenv 时：
+推荐使用初始化脚本（macOS 和 Windows 均可）：
+
+```bash
+python scripts/bootstrap.py
+```
+
+脚本会创建 `.venv`、安装项目及 `akquant`、`akshare`、DuckDB、Parquet、测试和格式化依赖，
+并执行导入和基础检查。脚本必须由 Python 3.12.x 运行；如果当前解释器版本不符，会给出
+切换解释器的提示，不会删除已有虚拟环境。
+
+可按需要选择初始化 profile：
+
+```bash
+python scripts/bootstrap.py --profile core  # 仅项目和 AKQuant
+python scripts/bootstrap.py --profile data  # 加入 AKShare、DuckDB 和 Parquet
+python scripts/bootstrap.py --profile dev   # 加入测试和 Ruff
+python scripts/bootstrap.py --profile full  # 以上全部内容（默认）
+```
+
+只想复用现有的 pip、setuptools 和 wheel 时，可以加 `--skip-pip-upgrade`；需要跳过导入、
+编译、测试和 lint 检查时，可以加 `--skip-checks`。缺少的项目依赖仍会按 profile 安装。
+脚本使用 Python 标准库实现，不依赖 Bash、Zsh 或 Windows 专有命令。
+
+也可以手动安装：
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
+python -m pip install --upgrade pip setuptools wheel
 python -m pip install -e ".[dev,data]"
 ```
 
@@ -45,13 +70,42 @@ Windows PowerShell 的激活命令为：
 .venv\Scripts\Activate.ps1
 ```
 
-数据相关依赖放在 `data` 可选依赖组中，后续可以根据实际数据源调整。项目不会把账号、密钥或本地环境配置提交到 Git。
+macOS 激活命令为：
+
+```bash
+source .venv/bin/activate
+```
+
+Windows 命令提示符也可以使用：
+
+```bat
+.venv\Scripts\activate.bat
+```
+
+项目不会把账号、密钥或本地环境配置提交到 Git。AKQuant 从 PyPI 提供 macOS 和 Windows 的
+预编译包；如果运行在没有匹配 wheel 的架构上，从源码安装时需要 Rust 工具链。
+
+## 组件边界
+
+```text
+AKShare -> 原始数据快照 -> DuckDB/Parquet -> 标准化数据
+                                      |
+                                      v
+                         AKQuant 策略与回测
+                                      |
+                                      v
+                              复盘报告与指标
+```
+
+回测不得在运行过程中临时请求实时数据。应先保存数据源、抓取时间、复权方式和数据版本，
+再使用固定快照执行回测。
 
 ## 常用检查
 
 ```bash
 python -m pytest
-ruff check .
+python -m ruff format --check .
+python -m ruff check .
 ```
 
 ## 目录约定
