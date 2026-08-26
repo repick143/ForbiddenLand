@@ -50,6 +50,9 @@ class CompatibilityConfig:
     allow_remote_fallback: bool = False
     daily_file: Path | None = None
     basic_file: Path | None = None
+    ths_concept_catalog_file: Path | None = None
+    ths_concept_members_file: Path | None = None
+    ths_sector_quotes_file: Path | None = None
 
     def __post_init__(self) -> None:
         backend = str(self.backend).strip().lower()
@@ -63,6 +66,24 @@ class CompatibilityConfig:
             object.__setattr__(self, "daily_file", Path(self.daily_file).expanduser())
         if self.basic_file is not None:
             object.__setattr__(self, "basic_file", Path(self.basic_file).expanduser())
+        if self.ths_concept_catalog_file is not None:
+            object.__setattr__(
+                self,
+                "ths_concept_catalog_file",
+                Path(self.ths_concept_catalog_file).expanduser(),
+            )
+        if self.ths_concept_members_file is not None:
+            object.__setattr__(
+                self,
+                "ths_concept_members_file",
+                Path(self.ths_concept_members_file).expanduser(),
+            )
+        if self.ths_sector_quotes_file is not None:
+            object.__setattr__(
+                self,
+                "ths_sector_quotes_file",
+                Path(self.ths_sector_quotes_file).expanduser(),
+            )
 
     @classmethod
     def from_env(
@@ -92,6 +113,13 @@ class CompatibilityConfig:
         basic_file = _path_from_env(
             values.get("FORBIDDENLAND_BASIC_FILE") or values.get("FORBIDDENLAND_LOCAL_BASIC_FILE")
         )
+        ths_concept_catalog_file = _path_from_env(
+            values.get("FORBIDDENLAND_THS_CONCEPT_CATALOG_FILE")
+        )
+        ths_concept_members_file = _path_from_env(
+            values.get("FORBIDDENLAND_THS_CONCEPT_MEMBERS_FILE")
+        )
+        ths_sector_quotes_file = _path_from_env(values.get("FORBIDDENLAND_THS_SECTOR_QUOTES_FILE"))
         return cls(
             backend=backend_value,
             data_root=data_root,
@@ -100,6 +128,9 @@ class CompatibilityConfig:
             ),
             daily_file=daily_file,
             basic_file=basic_file,
+            ths_concept_catalog_file=ths_concept_catalog_file,
+            ths_concept_members_file=ths_concept_members_file,
+            ths_sector_quotes_file=ths_sector_quotes_file,
         )
 
     def resolved_daily_file(self) -> Path:
@@ -111,6 +142,30 @@ class CompatibilityConfig:
         """Return the configured security-master snapshot path."""
 
         return self.basic_file or self.data_root / "raw" / "stock_basic_data.parquet"
+
+    def resolved_ths_concept_catalog_file(self) -> Path:
+        """Return the configured Tonghuashun sector catalog path."""
+
+        return (
+            self.ths_concept_catalog_file
+            or self.data_root / "raw" / "行业概念板块" / "行业概念板块_同花顺.parquet"
+        )
+
+    def resolved_ths_concept_members_file(self) -> Path:
+        """Return the configured Tonghuashun concept-member snapshot path."""
+
+        return (
+            self.ths_concept_members_file
+            or self.data_root / "raw" / "行业概念板块" / "概念板块成分汇总_同花顺.parquet"
+        )
+
+    def resolved_ths_sector_quotes_file(self) -> Path:
+        """Return the configured Tonghuashun per-sector quote archive path."""
+
+        return (
+            self.ths_sector_quotes_file
+            or self.data_root / "raw" / "行业概念板块" / "板块指数行情_同花顺_parquet.zip"
+        )
 
 
 # A descriptive alias is useful to callers that think in terms of a backend rather than an

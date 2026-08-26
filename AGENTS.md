@@ -100,11 +100,18 @@ focused on durable engineering constraints. Add project-specific rules as the co
   an explicit `FORBIDDENLAND_MARKET_BACKEND=local`, and hybrid may use the network only when
   `FORBIDDENLAND_ALLOW_REMOTE_FALLBACK=1` is explicit. Missing local data must not silently fall
   back to an older snapshot.
-- The compatibility layer currently covers `stock_zh_a_hist` and `stock_info_a_code_name` from the
-  supplied snapshots. It derives weekly/monthly bars from daily data. The supplied cumulative
+- The compatibility layer covers `stock_zh_a_hist`, `stock_info_a_code_name`, and the four AKShare
+  Tonghuashun concept endpoints (`stock_board_concept_name_ths`, `stock_board_concept_info_ths`,
+  `stock_board_concept_index_ths`, and `stock_board_concept_summary_ths`) from the supplied
+  snapshots. Tonghuashun local concept support is limited to the audited A-share `885/886` subset.
+  Its `.TI` codes are a local index namespace and must not be treated as interchangeable with the
+  remote page codes. Preserve unavailable local fields as missing: in particular quote amount,
+  ranking, advancing/declining counts, capital flow, event narrative, and leading stock. The local
+  summary is a catalog-date/current-member-count approximation, not historical event data.
+- The compatibility layer derives weekly/monthly bars from daily data. The supplied cumulative
   `adj_factor` is applied directly for hfq and normalized by the latest factor for qfq; any change
-  to those formulas requires a contract test against a pinned provider sample.
-  Do not represent the daily snapshot as `stock_zh_a_spot_em` realtime data.
+  to those formulas requires a contract test against a pinned provider sample. Do not represent
+  the daily snapshot as `stock_zh_a_spot_em` realtime data.
 
 ## Code Design
 

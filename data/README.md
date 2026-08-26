@@ -57,7 +57,20 @@ FROM read_parquet('data/raw/stock_basic_data.parquet');
 
 - `stock_zh_a_hist`：从 `raw/stock_daily.parquet` 查询日线，并可由日线聚合周线/月线。
 - `stock_info_a_code_name`：从 `raw/stock_basic_data.parquet` 返回代码和名称。
+- `stock_board_concept_name_ths`：从同花顺目录返回已核验的 A 股 `885/886` 概念名称和本地
+  `.TI` 代码。
+- `stock_board_concept_info_ths`：从单个板块行情文件构造 AKShare 简介形状；快照没有的排名、
+  涨跌家数、资金和成交额字段保留为空。
+- `stock_board_concept_index_ths`：从同花顺行情 ZIP 仅读取目标指数的 Parquet 成员并按日期筛选；
+  本地没有 `成交额` 字段，因此返回缺失值。
+- `stock_board_concept_summary_ths`：用目录日期和成分明细实际计数构造快照摘要；驱动事件和龙头股
+  保留为空，不将该结果表述为历史事件数据。
 
 后端由 `FORBIDDENLAND_MARKET_BACKEND` 控制（`remote`、`local` 或 `hybrid`，默认 `remote`）。本地模式不会因
 数据缺失而偷偷请求网络；`hybrid` 只有同时设置 `FORBIDDENLAND_ALLOW_REMOTE_FALLBACK=1` 时才
 允许对未覆盖接口回源。切换时只改环境变量，业务调用保持不变。
+
+同花顺文件默认从 `raw/行业概念板块/` 解析，也可分别通过
+`FORBIDDENLAND_THS_CONCEPT_CATALOG_FILE`、`FORBIDDENLAND_THS_CONCEPT_MEMBERS_FILE` 和
+`FORBIDDENLAND_THS_SECTOR_QUOTES_FILE` 覆盖。远程接口的网页页面代码与本地 `.TI` 指数代码
+属于不同命名空间，调用方不得把两者当成稳定映射。

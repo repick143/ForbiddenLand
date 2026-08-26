@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import functools
 import importlib
+import zipfile
 from collections.abc import Callable, Mapping
 from datetime import date, datetime
-from pathlib import Path
+from io import BytesIO
+from pathlib import Path, PurePosixPath
 from types import ModuleType
 from typing import Any
 
@@ -53,10 +55,28 @@ HIST_COLUMNS = [
     "换手率",
 ]
 
-LOCAL_ENDPOINTS = frozenset({"stock_zh_a_hist", "stock_info_a_code_name"})
+CONCEPT_NAME_COLUMNS = ["name", "code"]
+CONCEPT_INFO_COLUMNS = ["项目", "值"]
+CONCEPT_INDEX_COLUMNS = ["日期", "开盘价", "最高价", "最低价", "收盘价", "成交量", "成交额"]
+CONCEPT_SUMMARY_COLUMNS = ["日期", "概念名称", "驱动事件", "龙头股", "成分股数量"]
+
+LOCAL_ENDPOINTS = frozenset(
+    {
+        "stock_zh_a_hist",
+        "stock_info_a_code_name",
+        "stock_board_concept_name_ths",
+        "stock_board_concept_info_ths",
+        "stock_board_concept_index_ths",
+        "stock_board_concept_summary_ths",
+    }
+)
 _MISSING_ORIGINAL = object()
 
 __all__ = [
+    "CONCEPT_INDEX_COLUMNS",
+    "CONCEPT_INFO_COLUMNS",
+    "CONCEPT_NAME_COLUMNS",
+    "CONCEPT_SUMMARY_COLUMNS",
     "HIST_COLUMNS",
     "AkShareCompat",
     "CompatibilityConfig",
@@ -91,6 +111,52 @@ _REQUIRED_DAILY_COLUMNS = frozenset(
     column for column in _DAILY_SOURCE_COLUMNS if column != "adj_factor"
 )
 _REQUIRED_BASIC_COLUMNS = frozenset({"ts_code", "symbol", "name"})
+_REQUIRED_THS_CONCEPT_CATALOG_COLUMNS = frozenset(
+    {"代码", "名称", "成分个数", "交易所", "上市日期", "指数类型"}
+)
+_REQUIRED_THS_CONCEPT_MEMBER_COLUMNS = frozenset(
+    {"指数代码", "指数名称", "指数类型", "股票代码", "股票名称"}
+)
+_REQUIRED_THS_QUOTE_COLUMNS = frozenset(
+    {
+        "指数代码",
+        "交易日期",
+        "开盘点位",
+        "最高点位",
+        "最低点位",
+        "收盘点位",
+        "昨日收盘点",
+        "平均价",
+        "涨跌点位",
+        "涨跌幅",
+        "成交量",
+        "换手率",
+    }
+)
+_THS_QUOTE_NUMERIC_COLUMNS = (
+    "开盘点位",
+    "最高点位",
+    "最低点位",
+    "收盘点位",
+    "昨日收盘点",
+    "平均价",
+    "涨跌点位",
+    "涨跌幅",
+    "成交量",
+    "换手率",
+)
+_THS_CONCEPT_INFO_ITEMS = (
+    "今开",
+    "昨收",
+    "最低",
+    "最高",
+    "成交量(万手)",
+    "板块涨幅",
+    "涨幅排名",
+    "涨跌家数",
+    "资金净流入(亿)",
+    "成交额(亿)",
+)
 
 
 def _load_data_dependencies() -> tuple[Any, Any]:
@@ -162,10 +228,25 @@ def _validate_hist_request(
     return period.lower(), start, end, adjust.lower()
 
 
+def _validate_concept_index_request(
+    start_date: str | date | datetime,
+    end_date: str | date | datetime,
+) -> tuple[date, date]:
+    start = _parse_date(start_date, "start_date")
+    end = _parse_date(end_date, "end_date")
+    if start > end:
+        raise InvalidRequestError("start_date must not be later than end_date")
+    return start, end
+
+
 def _empty_hist_frame(pandas: Any) -> Any:
     frame = pandas.DataFrame(columns=HIST_COLUMNS)
     frame["股票代码"] = frame["股票代码"].astype("string")
     return frame
+
+
+def _empty_concept_index_frame(pandas: Any) -> Any:
+    return pandas.DataFrame(columns=CONCEPT_INDEX_COLUMNS)
 
 
 def _as_path(path: Path) -> Path:
@@ -185,6 +266,18 @@ class LocalBackend:
     @property
     def basic_path(self) -> Path:
         return _as_path(self.config.resolved_basic_file())
+
+    @property
+    def ths_concept_catalog_path(self) -> Path:
+        return _as_path(self.config.resolved_ths_concept_catalog_file())
+
+    @property
+    def ths_concept_members_path(self) -> Path:
+        return _as_path(self.config.resolved_ths_concept_members_file())
+
+    @property
+    def ths_sector_quotes_path(self) -> Path:
+        return _as_path(self.config.resolved_ths_sector_quotes_file())
 
     @staticmethod
     def _require_file(path: Path, label: str) -> None:
@@ -243,6 +336,216 @@ class LocalBackend:
         finally:
             if connection is not None:
                 connection.close()
+
+    def _concept_catalog(self, duckdb: Any, pandas: Any) -> Any:
+        path = self.ths_concept_catalog_path
+        self._require_file(path, "Tonghuashun concept catalog")
+        columns = self._schema(path, "Tonghuashun concept catalog", duckdb)
+        missing = sorted(_REQUIRED_THS_CONCEPT_CATALOG_COLUMNS - columns)
+        if missing:
+            raise LocalDataError(
+                f"Local Tonghuashun concept catalog {path} is missing required columns: "
+                f"{', '.join(missing)}"
+            )
+        frame = self._query(
+            path,
+            """
+            SELECT
+                CAST("代码" AS VARCHAR) AS code,
+                CAST("名称" AS VARCHAR) AS name,
+                CAST("上市日期" AS VARCHAR) AS listing_date
+            FROM read_parquet(?)
+            WHERE CAST("交易所" AS VARCHAR) = 'A股'
+              AND CAST("指数类型" AS VARCHAR) = '概念指数'
+              AND LEFT(CAST("代码" AS VARCHAR), 3) IN ('885', '886')
+              AND RIGHT(CAST("代码" AS VARCHAR), 3) = '.TI'
+            ORDER BY code
+            """,
+            [str(path)],
+            "Tonghuashun concept catalog",
+            duckdb,
+            pandas,
+        )
+        if frame.empty:
+            raise LocalDataError(
+                f"Local Tonghuashun concept catalog {path} contains no A-share 885/886 concepts"
+            )
+        frame["code"] = frame["code"].astype("string").str.strip().str.upper()
+        frame["name"] = frame["name"].astype("string").str.strip()
+        invalid = (
+            frame["code"].isna()
+            | frame["name"].isna()
+            | frame["code"].eq("")
+            | frame["name"].eq("")
+        )
+        if invalid.any():
+            raise LocalDataError(
+                f"Local Tonghuashun concept catalog {path} contains empty concept codes or names"
+            )
+        if frame["code"].duplicated().any():
+            raise LocalDataError(
+                f"Local Tonghuashun concept catalog {path} contains duplicate concept codes"
+            )
+        if frame["name"].duplicated().any():
+            raise LocalDataError(
+                f"Local Tonghuashun concept catalog {path} contains duplicate concept names"
+            )
+        return frame.reset_index(drop=True)
+
+    def _resolve_concept(
+        self,
+        symbol: str,
+        duckdb: Any,
+        pandas: Any,
+    ) -> tuple[str, str, Any]:
+        if not isinstance(symbol, str) or not symbol.strip():
+            raise InvalidRequestError("symbol must be a non-empty Tonghuashun concept name or code")
+        value = symbol.strip()
+        catalog = self._concept_catalog(duckdb, pandas)
+        if value.upper().endswith(".TI"):
+            matches = catalog.loc[catalog["code"] == value.upper()]
+        else:
+            matches = catalog.loc[catalog["name"] == value]
+        if matches.empty:
+            raise LocalDataUnavailableError(
+                f"Tonghuashun concept {symbol!r} is not present in the local A-share 885/886 snapshot; "
+                "use a concept name or local six-digit .TI code"
+            )
+        row = matches.iloc[0]
+        return str(row["code"]), str(row["name"]), row["listing_date"]
+
+    def _concept_member_counts(self, duckdb: Any, pandas: Any) -> Any:
+        path = self.ths_concept_members_path
+        self._require_file(path, "Tonghuashun concept members")
+        columns = self._schema(path, "Tonghuashun concept members", duckdb)
+        missing = sorted(_REQUIRED_THS_CONCEPT_MEMBER_COLUMNS - columns)
+        if missing:
+            raise LocalDataError(
+                f"Local Tonghuashun concept members snapshot {path} is missing required columns: "
+                f"{', '.join(missing)}"
+            )
+        frame = self._query(
+            path,
+            """
+            SELECT
+                UPPER(TRIM(CAST("指数代码" AS VARCHAR))) AS code,
+                COUNT(*) AS actual_count,
+                COUNT(DISTINCT CAST("股票代码" AS VARCHAR)) AS unique_count,
+                SUM(
+                    CASE
+                        WHEN "股票代码" IS NULL
+                          OR TRIM(CAST("股票代码" AS VARCHAR)) = ''
+                        THEN 1 ELSE 0
+                    END
+                ) AS invalid_count
+            FROM read_parquet(?)
+            WHERE CAST("指数类型" AS VARCHAR) = '概念指数'
+              AND LEFT(CAST("指数代码" AS VARCHAR), 3) IN ('885', '886')
+            GROUP BY code
+            ORDER BY code
+            """,
+            [str(path)],
+            "Tonghuashun concept members",
+            duckdb,
+            pandas,
+        )
+        if frame.empty:
+            raise LocalDataError(
+                f"Local Tonghuashun concept members snapshot {path} contains no 885/886 concepts"
+            )
+        if (frame["invalid_count"] > 0).any():
+            raise LocalDataError(
+                f"Local Tonghuashun concept members snapshot {path} contains empty stock codes"
+            )
+        if (frame["actual_count"] != frame["unique_count"]).any():
+            raise LocalDataError(
+                f"Local Tonghuashun concept members snapshot {path} contains duplicate "
+                "(concept code, stock code) relationships"
+            )
+        frame["code"] = frame["code"].astype("string")
+        frame["actual_count"] = frame["actual_count"].astype("int64")
+        return frame[["code", "actual_count"]].reset_index(drop=True)
+
+    def _read_concept_quotes(self, code: str, pandas: Any) -> Any:
+        path = self.ths_sector_quotes_path
+        self._require_file(path, "Tonghuashun sector quote archive")
+        expected_name = f"{code}.parquet"
+        try:
+            with zipfile.ZipFile(path) as archive:
+                matches = [
+                    name for name in archive.namelist() if PurePosixPath(name).name == expected_name
+                ]
+                if not matches:
+                    raise LocalDataUnavailableError(
+                        f"Local Tonghuashun sector quote archive {path} has no member "
+                        f"{expected_name}"
+                    )
+                if len(matches) > 1:
+                    raise LocalDataError(
+                        f"Local Tonghuashun sector quote archive {path} contains multiple "
+                        f"members named {expected_name}"
+                    )
+                payload = archive.read(matches[0])
+        except LocalDataError:
+            raise
+        except (OSError, zipfile.BadZipFile) as exc:
+            raise LocalDataError(
+                f"Unable to read local Tonghuashun sector quote archive {path}: {exc}"
+            ) from exc
+
+        try:
+            frame = pandas.read_parquet(BytesIO(payload))
+        except ImportError as exc:
+            raise LocalDataUnavailableError(
+                "Reading zipped Tonghuashun Parquet quotes requires a pandas Parquet engine. "
+                "Install the data profile with `python -m pip install -e '.[data]'`."
+            ) from exc
+        except Exception as exc:
+            raise LocalDataError(
+                f"Unable to read {expected_name} from local Tonghuashun archive {path}: {exc}"
+            ) from exc
+
+        missing = sorted(_REQUIRED_THS_QUOTE_COLUMNS - set(frame.columns))
+        if missing:
+            raise LocalDataError(
+                f"Local Tonghuashun quote member {expected_name} is missing required columns: "
+                f"{', '.join(missing)}"
+            )
+        if frame.empty:
+            return frame
+        source_codes = frame["指数代码"].astype("string").str.strip().str.upper()
+        if source_codes.isna().any() or set(source_codes.tolist()) != {code}:
+            raise LocalDataError(
+                f"Local Tonghuashun quote member {expected_name} contains a mismatched index code"
+            )
+        parsed_dates = pandas.to_datetime(frame["交易日期"], errors="coerce")
+        if parsed_dates.isna().any():
+            raise LocalDataError(
+                f"Local Tonghuashun quote member {expected_name} contains an invalid trade date"
+            )
+        if parsed_dates.duplicated().any():
+            raise LocalDataError(
+                f"Local Tonghuashun quote member {expected_name} contains duplicate trade dates"
+            )
+        frame = frame.copy()
+        frame["交易日期"] = parsed_dates
+        for column in _THS_QUOTE_NUMERIC_COLUMNS:
+            source = frame[column]
+            converted = pandas.to_numeric(source, errors="coerce")
+            if (source.notna() & converted.isna()).any():
+                raise LocalDataError(
+                    f"Local Tonghuashun quote member {expected_name} contains a non-numeric "
+                    f"{column} value"
+                )
+            frame[column] = converted
+        return frame.sort_values("交易日期").reset_index(drop=True)
+
+    @staticmethod
+    def _format_ths_info_value(value: Any, pandas: Any, *, percent: bool = False) -> Any:
+        if pandas.isna(value):
+            return pandas.NA
+        suffix = "%" if percent else ""
+        return f"{float(value):.2f}{suffix}"
 
     def _resolve_ts_code(self, symbol: str, duckdb: Any, pandas: Any) -> tuple[str, str]:
         code, market = _parse_symbol(symbol)
@@ -561,6 +864,115 @@ class LocalBackend:
         frame["name"] = frame["name"].astype("string")
         return frame[["code", "name"]].reset_index(drop=True)
 
+    def stock_board_concept_name_ths(self) -> Any:
+        duckdb, pandas = _load_data_dependencies()
+        catalog = self._concept_catalog(duckdb, pandas)
+        return catalog[["name", "code"]].reset_index(drop=True)
+
+    def stock_board_concept_info_ths(self, symbol: str = "阿里巴巴概念") -> Any:
+        duckdb, pandas = _load_data_dependencies()
+        code, _, _ = self._resolve_concept(symbol, duckdb, pandas)
+        quotes = self._read_concept_quotes(code, pandas)
+        values: dict[str, Any] = {item: pandas.NA for item in _THS_CONCEPT_INFO_ITEMS}
+        if not quotes.empty:
+            latest = quotes.iloc[-1]
+            values.update(
+                {
+                    "今开": self._format_ths_info_value(latest["开盘点位"], pandas),
+                    "昨收": self._format_ths_info_value(latest["昨日收盘点"], pandas),
+                    "最低": self._format_ths_info_value(latest["最低点位"], pandas),
+                    "最高": self._format_ths_info_value(latest["最高点位"], pandas),
+                    "板块涨幅": self._format_ths_info_value(latest["涨跌幅"], pandas, percent=True),
+                }
+            )
+        return pandas.DataFrame(
+            {
+                "项目": list(_THS_CONCEPT_INFO_ITEMS),
+                "值": [values[item] for item in _THS_CONCEPT_INFO_ITEMS],
+            },
+            columns=CONCEPT_INFO_COLUMNS,
+        )
+
+    def stock_board_concept_index_ths(
+        self,
+        symbol: str = "阿里巴巴概念",
+        start_date: str = "20200101",
+        end_date: str = "20250228",
+    ) -> Any:
+        start, end = _validate_concept_index_request(start_date, end_date)
+        duckdb, pandas = _load_data_dependencies()
+        code, _, _ = self._resolve_concept(symbol, duckdb, pandas)
+        quotes = self._read_concept_quotes(code, pandas)
+        if quotes.empty:
+            return _empty_concept_index_frame(pandas)
+        selected = quotes.loc[
+            (quotes["交易日期"] >= pandas.Timestamp(start))
+            & (quotes["交易日期"] <= pandas.Timestamp(end))
+        ].copy()
+        if selected.empty:
+            return _empty_concept_index_frame(pandas)
+        result = pandas.DataFrame(
+            {
+                "日期": selected["交易日期"].dt.date.to_numpy(),
+                "开盘价": selected["开盘点位"].to_numpy(),
+                "最高价": selected["最高点位"].to_numpy(),
+                "最低价": selected["最低点位"].to_numpy(),
+                "收盘价": selected["收盘点位"].to_numpy(),
+                "成交量": selected["成交量"].to_numpy(),
+                # The audited archive has no turnover-amount field. Missing is distinct from zero.
+                "成交额": pandas.array([pandas.NA] * len(selected), dtype="Float64"),
+            },
+            columns=CONCEPT_INDEX_COLUMNS,
+        )
+        return result.reset_index(drop=True)
+
+    def stock_board_concept_summary_ths(self) -> Any:
+        duckdb, pandas = _load_data_dependencies()
+        catalog = self._concept_catalog(duckdb, pandas)
+        counts = self._concept_member_counts(duckdb, pandas)
+        catalog_codes = set(catalog["code"].tolist())
+        count_codes = set(counts["code"].tolist())
+        missing_codes = sorted(catalog_codes - count_codes)
+        extra_codes = sorted(count_codes - catalog_codes)
+        if missing_codes or extra_codes:
+            details = []
+            if missing_codes:
+                details.append(f"missing member snapshots for {', '.join(missing_codes)}")
+            if extra_codes:
+                details.append(
+                    f"member snapshots without catalog entries for {', '.join(extra_codes)}"
+                )
+            raise LocalDataError(
+                "Local Tonghuashun concept catalog and member snapshot disagree: "
+                + "; ".join(details)
+            )
+        merged = catalog.merge(counts, on="code", how="left", validate="one_to_one")
+        raw_dates = merged["listing_date"].astype("string").str.strip()
+        parsed_dates = pandas.to_datetime(raw_dates, format="%Y%m%d", errors="coerce")
+        invalid_dates = raw_dates.notna() & parsed_dates.isna()
+        if invalid_dates.any():
+            invalid_code = str(merged.loc[invalid_dates, "code"].iloc[0])
+            raise LocalDataError(
+                "Local Tonghuashun concept catalog contains an invalid listing date for "
+                f"{invalid_code}"
+            )
+        merged["listing_timestamp"] = parsed_dates
+        merged = merged.sort_values(
+            ["listing_timestamp", "code"], ascending=[False, True], na_position="last"
+        ).reset_index(drop=True)
+        result = pandas.DataFrame(
+            {
+                "日期": merged["listing_timestamp"].dt.date.to_numpy(),
+                "概念名称": merged["name"].to_numpy(),
+                # These narrative fields are not present in the supplied local snapshot.
+                "驱动事件": pandas.array([pandas.NA] * len(merged), dtype="string"),
+                "龙头股": pandas.array([pandas.NA] * len(merged), dtype="string"),
+                "成分股数量": merged["actual_count"].to_numpy(),
+            },
+            columns=CONCEPT_SUMMARY_COLUMNS,
+        )
+        return result.reset_index(drop=True)
+
 
 class RemoteBackend:
     """Thin lazy proxy around the installed AkShare module."""
@@ -663,6 +1075,28 @@ class AkShareCompat:
 
     def stock_info_a_code_name(self) -> Any:
         return self._dispatch("stock_info_a_code_name")
+
+    def stock_board_concept_name_ths(self) -> Any:
+        return self._dispatch("stock_board_concept_name_ths")
+
+    def stock_board_concept_info_ths(self, symbol: str = "阿里巴巴概念") -> Any:
+        return self._dispatch("stock_board_concept_info_ths", symbol=symbol)
+
+    def stock_board_concept_index_ths(
+        self,
+        symbol: str = "阿里巴巴概念",
+        start_date: str = "20200101",
+        end_date: str = "20250228",
+    ) -> Any:
+        return self._dispatch(
+            "stock_board_concept_index_ths",
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+    def stock_board_concept_summary_ths(self) -> Any:
+        return self._dispatch("stock_board_concept_summary_ths")
 
     def __getattr__(self, endpoint: str) -> Callable[..., Any]:
         if endpoint.startswith("_"):

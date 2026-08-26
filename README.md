@@ -167,10 +167,26 @@ FORBIDDENLAND_MARKET_BACKEND=local       # 用户复核后显式读取 data/raw/
 FORBIDDENLAND_MARKET_BACKEND=hybrid      # 本地实现优先，回源需另行显式允许
 FORBIDDENLAND_ALLOW_REMOTE_FALLBACK=0    # hybrid 默认不隐式回源
 FORBIDDENLAND_DATA_ROOT=data
+FORBIDDENLAND_THS_CONCEPT_CATALOG_FILE=...  # 可选：覆盖同花顺概念目录
+FORBIDDENLAND_THS_CONCEPT_MEMBERS_FILE=...  # 可选：覆盖同花顺概念成分汇总
+FORBIDDENLAND_THS_SECTOR_QUOTES_FILE=...    # 可选：覆盖同花顺板块行情 ZIP
 ```
 
-本地首批支持 `stock_zh_a_hist`（日线、周线、月线）和 `stock_info_a_code_name`。在本地快照完成
-复核并获明确批准前，默认 backend 是 `remote`；需要读取本地文件时必须显式设置
+本地支持 `stock_zh_a_hist`（日线、周线、月线）、`stock_info_a_code_name`，以及以下四个
+AKShare 同花顺概念接口：
+
+- `stock_board_concept_name_ths`
+- `stock_board_concept_info_ths`
+- `stock_board_concept_index_ths`
+- `stock_board_concept_summary_ths`
+
+同花顺本地概念范围限定为已核验的 A 股 `885/886` 概念指数。调用详情和行情时既可传概念名称，
+也可传本地 `六位代码.TI`；本地 `.TI` 指数代码与远程网页接口返回的页面代码不是同一命名空间，
+不能直接互换。行情快照没有 `成交额`，简介快照也不能提供成交量单位换算、涨幅排名、涨跌家数、
+资金净流入和成交额，这些字段返回缺失值而不是零。概念时间表是用目录 `上市日期`、概念名称和
+成分明细实际计数构造的快照近似；`驱动事件`、`龙头股` 返回缺失值，不代表源端不存在。
+
+在本地快照完成复核并获明确批准前，默认 backend 是 `remote`；需要读取本地文件时必须显式设置
 `FORBIDDENLAND_MARKET_BACKEND=local`。
 `adjust=""` 使用快照中的原始价格；`qfq`/`hfq` 使用 `adj_factor` 计算。没有本地对应数据的
 接口在 `local` 模式会明确报错；只有在 `hybrid` 且显式设置
