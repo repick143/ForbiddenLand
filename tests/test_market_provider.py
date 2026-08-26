@@ -82,6 +82,28 @@ def test_provider_marks_explicit_local_backend_for_review() -> None:
     assert result.local_snapshot_review_required is True
 
 
+def test_provider_labels_hybrid_storage_without_claiming_a_single_source() -> None:
+    frame = pd.DataFrame(
+        {
+            "日期": [date(2024, 1, 2)],
+            "开盘": [10.0],
+            "收盘": [10.2],
+            "最高": [10.5],
+            "最低": [9.8],
+            "成交量": [1000.0],
+        }
+    )
+    provider = AkShareMarketProvider(
+        CompatibilityConfig(backend="hybrid", allow_remote_fallback=True),
+        client=_client(frame),
+    )
+
+    result = provider.fetch_history(_query())
+
+    assert result.storage == "DuckDB/Parquet or remote response (explicit fallback)"
+    assert result.local_snapshot_review_required is True
+
+
 def test_provider_rejects_malformed_required_values() -> None:
     frame = pd.DataFrame(
         {

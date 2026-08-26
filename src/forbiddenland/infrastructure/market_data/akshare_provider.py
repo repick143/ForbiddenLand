@@ -115,6 +115,14 @@ class AkShareMarketProvider:
             return "local Parquet snapshot via DuckDB"
         return "AkShare-compatible hybrid provider"
 
+    @property
+    def storage(self) -> str:
+        if self.config.backend == "remote":
+            return "remote response"
+        if self.config.backend == "local":
+            return "DuckDB/Parquet"
+        return "DuckDB/Parquet or remote response (explicit fallback)"
+
     def list_securities(self) -> Sequence[Security]:
         return DEFAULT_SECURITIES
 
@@ -187,7 +195,7 @@ class AkShareMarketProvider:
             bars=tuple(bars),
             source=self.source,
             backend=self.backend,
-            storage="remote response" if self.config.backend == "remote" else "DuckDB/Parquet",
+            storage=self.storage,
             retrieved_at_utc=self._clock(),
             local_snapshot_review_required=self.config.backend != "remote",
         )
