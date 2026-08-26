@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
+from math import isfinite
 from pathlib import Path
 from typing import Literal
 
@@ -30,6 +31,36 @@ def _parse_bool(value: str | bool | None, *, default: bool = False) -> bool:
     )
 
 
+def _parse_int(value: str | int | None, *, default: int, name: str, minimum: int) -> int:
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return default
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ConfigurationError(f"Invalid integer value for {name}: {value!r}") from exc
+    if parsed < minimum:
+        raise ConfigurationError(f"{name} must be at least {minimum}; got {parsed}")
+    return parsed
+
+
+def _parse_float(
+    value: str | float | None,
+    *,
+    default: float | None,
+    name: str,
+    minimum: float,
+) -> float | None:
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return default
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ConfigurationError(f"Invalid numeric value for {name}: {value!r}") from exc
+    if not isfinite(parsed) or parsed < minimum:
+        raise ConfigurationError(f"{name} must be finite and at least {minimum}; got {parsed}")
+    return parsed
+
+
 def _path_from_env(value: str | None) -> Path | None:
     if value is None or not value.strip():
         return None
@@ -53,6 +84,10 @@ class CompatibilityConfig:
     ths_concept_catalog_file: Path | None = None
     ths_concept_members_file: Path | None = None
     ths_sector_quotes_file: Path | None = None
+    remote_retry_attempts: int = 3
+    remote_retry_backoff_seconds: float = 0.5
+    remote_request_timeout_seconds: float | None = 15.0
+    remote_alternate_source: bool = True
 
     def __post_init__(self) -> None:
         backend = str(self.backend).strip().lower()
@@ -62,6 +97,33 @@ class CompatibilityConfig:
             )
         object.__setattr__(self, "backend", backend)
         object.__setattr__(self, "data_root", Path(self.data_root).expanduser())
+        retry_attempts = _parse_int(
+            self.remote_retry_attempts,
+            default=3,
+            name="remote_retry_attempts",
+            minimum=1,
+        )
+        retry_backoff = _parse_float(
+            self.remote_retry_backoff_seconds,
+            default=0.5,
+            name="remote_retry_backoff_seconds",
+            minimum=0.0,
+        )
+        request_timeout = (
+            None
+            if self.remote_request_timeout_seconds is None
+            else _parse_float(
+                self.remote_request_timeout_seconds,
+                default=15.0,
+                name="remote_request_timeout_seconds",
+                minimum=0.001,
+            )
+        )
+        if not isinstance(self.remote_alternate_source, bool):
+            raise ConfigurationError("remote_alternate_source must be a boolean")
+        object.__setattr__(self, "remote_retry_attempts", retry_attempts)
+        object.__setattr__(self, "remote_retry_backoff_seconds", retry_backoff)
+        object.__setattr__(self, "remote_request_timeout_seconds", request_timeout)
         if self.daily_file is not None:
             object.__setattr__(self, "daily_file", Path(self.daily_file).expanduser())
         if self.basic_file is not None:
@@ -125,6 +187,27 @@ class CompatibilityConfig:
             data_root=data_root,
             allow_remote_fallback=_parse_bool(
                 values.get("FORBIDDENLAND_ALLOW_REMOTE_FALLBACK"), default=False
+            ),
+            remote_retry_attempts=_parse_int(
+                values.get("FORBIDDENLAND_REMOTE_RETRY_ATTEMPTS"),
+                default=3,
+                name="FORBIDDENLAND_REMOTE_RETRY_ATTEMPTS",
+                minimum=1,
+            ),
+            remote_retry_backoff_seconds=_parse_float(
+                values.get("FORBIDDENLAND_REMOTE_RETRY_BACKOFF_SECONDS"),
+                default=0.5,
+                name="FORBIDDENLAND_REMOTE_RETRY_BACKOFF_SECONDS",
+                minimum=0.0,
+            ),
+            remote_request_timeout_seconds=_parse_float(
+                values.get("FORBIDDENLAND_REMOTE_REQUEST_TIMEOUT_SECONDS"),
+                default=15.0,
+                name="FORBIDDENLAND_REMOTE_REQUEST_TIMEOUT_SECONDS",
+                minimum=0.001,
+            ),
+            remote_alternate_source=_parse_bool(
+                values.get("FORBIDDENLAND_REMOTE_ALTERNATE_SOURCE"), default=True
             ),
             daily_file=daily_file,
             basic_file=basic_file,

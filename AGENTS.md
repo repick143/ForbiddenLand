@@ -100,14 +100,29 @@ focused on durable engineering constraints. Add project-specific rules as the co
   an explicit `FORBIDDENLAND_MARKET_BACKEND=local`, and hybrid may use the network only when
   `FORBIDDENLAND_ALLOW_REMOTE_FALLBACK=1` is explicit. Missing local data must not silently fall
   back to an older snapshot.
-- The compatibility layer covers `stock_zh_a_hist`, `stock_info_a_code_name`, and the four AKShare
+- Remote stock-history requests use a bounded retry policy for connection and timeout failures only.
+  Configure it with `FORBIDDENLAND_REMOTE_RETRY_ATTEMPTS`,
+  `FORBIDDENLAND_REMOTE_RETRY_BACKOFF_SECONDS`, and
+  `FORBIDDENLAND_REMOTE_REQUEST_TIMEOUT_SECONDS`. When the primary remote stock-history endpoint
+  remains unavailable, the provider may use AkShare's Tencent historical endpoint if
+  `FORBIDDENLAND_REMOTE_ALTERNATE_SOURCE` is enabled (the default); the response provenance must
+  identify that fallback. This is still remote acquisition and must never become a silent local or
+  stale-cache substitution.
+- The compatibility layer covers `stock_zh_a_hist`, the remote-only `stock_zh_a_hist_tx`,
+  `stock_info_a_code_name`, and the four AKShare
   Tonghuashun concept endpoints (`stock_board_concept_name_ths`, `stock_board_concept_info_ths`,
   `stock_board_concept_index_ths`, and `stock_board_concept_summary_ths`) from the supplied
   snapshots. Tonghuashun local concept support is limited to the audited A-share `885/886` subset.
   Its `.TI` codes are a local index namespace and must not be treated as interchangeable with the
   remote page codes. Preserve unavailable local fields as missing: in particular quote amount,
-  ranking, advancing/declining counts, capital flow, event narrative, and leading stock. The local
-  summary is a catalog-date/current-member-count approximation, not historical event data.
+  occasional concept volume, ranking, advancing/declining counts, capital flow, event narrative,
+  and leading stock. The local summary is a catalog-date/current-member-count approximation, not
+  historical event data.
+- The HTTP market contract exposes searchable `stock`, `index`, and `concept` assets through
+  `/api/v1/market/assets`; `/api/v1/market/bars` accepts the same `asset_type`. Local snapshots
+  provide stock and audited Tonghuashun concept history. The curated broad-index catalog is
+  available in every mode, but broad-index history remains remote-only until a local index
+  snapshot is supplied and reviewed; local failures must stay explicit.
 - The compatibility layer derives weekly/monthly bars from daily data. The supplied cumulative
   `adj_factor` is applied directly for hfq and normalized by the latest factor for qfq; any change
   to those formulas requires a contract test against a pinned provider sample. Do not represent
@@ -136,6 +151,17 @@ focused on durable engineering constraints. Add project-specific rules as the co
 - Prefer small modules and direct code over speculative abstraction. Introduce shared abstractions
   only after they remove concrete duplication or enforce a real domain boundary.
 
+## Frontend Watchlists
+
+- Keep personal watchlist groups browser-local under `forbiddenland.watchlist.v1`. Do not commit
+  their contents or silently move them into analytical DuckDB files. A future multi-device or
+  multi-user persistence change requires an explicit backend contract and migration decision.
+- Use the official `lightweight-charts` package directly for market charts. Keep the TradingView
+  attribution enabled, create chart instances only for visible items, observe container resizing,
+  and remove each instance when its React component unmounts.
+- The watchlist grid supports page sizes 4, 6, and 9. Preserve independent loading and error state
+  per asset so one unavailable provider response does not hide otherwise valid charts.
+
 ## Formatting And Style
 
 - Use UTF-8 source files, LF line endings, four-space indentation, and no tabs.
@@ -152,6 +178,10 @@ focused on durable engineering constraints. Add project-specific rules as the co
 - Do not silently swallow network, parsing, or data-quality failures.
 - When partial results are valid, retain them and report the affected source, symbol, field, and
   reason for the missing result.
+- Retry only transient remote connection failures with a finite, observable policy; do not retry
+  invalid parameters, malformed responses, or data-quality errors.
+- If a remote alternate endpoint supplies a result, preserve that endpoint in the result
+  provenance so analyses can be compared and reproduced.
 - Do not silently substitute stale cached values after a live-data failure.
 - Avoid broad exception handling unless it adds context and preserves the original exception or
   deliberately isolates one failed item in a batch.

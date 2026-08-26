@@ -8,6 +8,16 @@ from math import isfinite
 from typing import Literal
 
 Adjustment = Literal["", "qfq", "hfq"]
+AssetType = Literal["stock", "index", "concept"]
+
+
+@dataclass(frozen=True, slots=True)
+class MarketAsset:
+    """A searchable market instrument exposed to presentation clients."""
+
+    asset_type: AssetType
+    code: str
+    name: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,19 +42,49 @@ class MarketQuery:
     symbol: str
     start_date: date
     end_date: date
+    asset_type: AssetType = "stock"
     adjust: Adjustment = ""
 
     def __post_init__(self) -> None:
-        symbol = self.symbol.strip().upper()
-        if "." in symbol:
-            symbol = symbol.rsplit(".", 1)[0]
-        if not symbol.isdigit() or len(symbol) > 6:
-            raise ValueError("symbol must be a stock-code string with at most six digits")
+        asset_type = self.asset_type.strip().lower()
+        if asset_type not in {"stock", "index", "concept"}:
+            raise ValueError("asset_type must be one of stock, index, or concept")
+        symbol = self.symbol.strip()
+        if asset_type == "stock":
+            symbol = symbol.upper()
+            if "." in symbol:
+                symbol = symbol.rsplit(".", 1)[0]
+            if not symbol.isdigit() or len(symbol) > 6:
+                raise ValueError("symbol must be a stock-code string with at most six digits")
+            symbol = symbol.zfill(6)
+        elif asset_type == "index":
+            symbol = symbol.lower()
+            prefix = next(
+                (
+                    candidate
+                    for candidate in ("csi", "sh", "sz", "bj")
+                    if symbol.startswith(candidate)
+                ),
+                "",
+            )
+            digits = symbol[len(prefix) :]
+            if not prefix or len(digits) != 6 or not digits.isdigit():
+                raise ValueError(
+                    "index symbol must use a market prefix such as sh000001 or sz399001"
+                )
+        else:
+            if not symbol or len(symbol) > 64:
+                raise ValueError("concept symbol must contain between 1 and 64 characters")
+            if symbol.lower().endswith(".ti"):
+                symbol = symbol.upper()
         if self.start_date > self.end_date:
             raise ValueError("start_date must not be later than end_date")
         if self.adjust not in {"", "qfq", "hfq"}:
             raise ValueError("adjust must be one of '', qfq, or hfq")
-        object.__setattr__(self, "symbol", symbol.zfill(6))
+        if asset_type != "stock" and self.adjust:
+            raise ValueError("adjust is supported for stock assets only")
+        object.__setattr__(self, "asset_type", asset_type)
+        object.__setattr__(self, "symbol", symbol)
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,7 +97,7 @@ class MarketBar:
     high: float
     low: float
     close: float
-    volume: float
+    volume: float | None
     amount: float | None = None
     change: float | None = None
     change_percent: float | None = None

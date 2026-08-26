@@ -15,6 +15,18 @@ export interface SecurityListResponse {
   items: Security[];
 }
 
+export type AssetType = "stock" | "index" | "concept";
+
+export interface MarketAsset {
+  asset_type: AssetType;
+  code: string;
+  name: string;
+}
+
+export interface MarketAssetListResponse {
+  items: MarketAsset[];
+}
+
 export interface MarketBar {
   symbol: string;
   date: string;
@@ -22,7 +34,7 @@ export interface MarketBar {
   high: number;
   low: number;
   close: number;
-  volume: number;
+  volume: number | null;
   amount: number | null;
   change: number | null;
   change_percent: number | null;
@@ -30,6 +42,7 @@ export interface MarketBar {
 }
 
 export interface MarketBarsResponse {
+  asset_type: AssetType;
   symbol: string;
   bars: MarketBar[];
   summary: {

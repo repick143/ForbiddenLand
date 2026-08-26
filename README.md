@@ -133,9 +133,14 @@ npm run dev
 
 开发时前端运行在 `http://127.0.0.1:5173`，`/api` 请求由 Vite 转发到
 `http://127.0.0.1:9092`。后端默认监听 `9092` 端口（可用 `FORBIDDENLAND_API_PORT` 覆盖）。
-查询表单默认使用本地日期的前一个月到今天，两个日期均可手动修改。后端提供
-`/api/v1/health`、`/api/v1/market/securities` 和
-`/api/v1/market/bars`，OpenAPI 契约可用 `python scripts/export_openapi.py` 更新到
+自选研究台默认使用本地日期的前一个月到今天，支持创建分组并添加个股、指数或同花顺概念，
+每页可展示 4、6 或 9 张走势图。分组和标的保存在当前浏览器的 `localStorage`，不会写入
+DuckDB，也不会进入 Git。图表使用 `lightweight-charts`，页面保留 TradingView attribution。
+
+后端提供 `/api/v1/health`、`/api/v1/market/securities`、`/api/v1/market/assets` 和
+`/api/v1/market/bars`。统一资产接口使用 `asset_type=stock|index|concept`；本地模式支持个股和
+已核验的同花顺概念行情，常见宽基指数目录可以搜索，但指数历史行情目前需要远端 AkShare。
+OpenAPI 契约可用 `python scripts/export_openapi.py` 更新到
 `contracts/openapi.json`。生产前端使用 `npm run build` 生成静态资源，仍通过同一 API 契约访问
 后端。
 
@@ -168,6 +173,10 @@ FORBIDDENLAND_MARKET_BACKEND=remote      # 默认：调用真实 AkShare
 FORBIDDENLAND_MARKET_BACKEND=local       # 用户复核后显式读取 data/raw/
 FORBIDDENLAND_MARKET_BACKEND=hybrid      # 本地实现优先，回源需另行显式允许
 FORBIDDENLAND_ALLOW_REMOTE_FALLBACK=0    # hybrid 默认不隐式回源
+FORBIDDENLAND_REMOTE_RETRY_ATTEMPTS=3    # 瞬时连接错误的总尝试次数
+FORBIDDENLAND_REMOTE_RETRY_BACKOFF_SECONDS=0.5
+FORBIDDENLAND_REMOTE_REQUEST_TIMEOUT_SECONDS=15
+FORBIDDENLAND_REMOTE_ALTERNATE_SOURCE=1  # 主端点不可用时允许 Tencent AkShare 端点
 FORBIDDENLAND_DATA_ROOT=data
 FORBIDDENLAND_THS_CONCEPT_CATALOG_FILE=...  # 可选：覆盖同花顺概念目录
 FORBIDDENLAND_THS_CONCEPT_MEMBERS_FILE=...  # 可选：覆盖同花顺概念成分汇总
@@ -182,6 +191,9 @@ AKShare 同花顺概念接口：
 - `stock_board_concept_index_ths`
 - `stock_board_concept_summary_ths`
 
+`stock_zh_a_hist_tx` 是仅远程可用的 Tencent 历史端点，主要作为主历史端点连接失败时的备选，
+不会读取本地快照。
+
 同花顺本地概念范围限定为已核验的 A 股 `885/886` 概念指数。调用详情和行情时既可传概念名称，
 也可传本地 `六位代码.TI`；本地 `.TI` 指数代码与远程网页接口返回的页面代码不是同一命名空间，
 不能直接互换。行情快照没有 `成交额`，简介快照也不能提供成交量单位换算、涨幅排名、涨跌家数、
@@ -194,6 +206,12 @@ AKShare 同花顺概念接口：
 接口在 `local` 模式会明确报错；只有在 `hybrid` 且显式设置
 `FORBIDDENLAND_ALLOW_REMOTE_FALLBACK=1` 时才允许回源。日线快照不是实时行情，不能用来冒充
 `stock_zh_a_spot_em`。
+
+远程个股历史请求对连接中断和超时执行有限次数的指数退避。若 AkShare 当前主端点持续不可用，
+且 `FORBIDDENLAND_REMOTE_ALTERNATE_SOURCE` 未关闭，provider 会改用 AkShare 的
+`stock_zh_a_hist_tx`（腾讯）端点；返回结果的 `provenance.source` 和 `storage` 会明确标记
+`Tencent historical fallback`。参数错误、响应格式错误和数据质量错误不会重试，也不会使用旧缓存
+或未经复核的本地快照替代。若两个远程端点都失败，API 会返回 `502` 及两端点的错误上下文。
 
 已有必须保留 `import akshare as ak` 的脚本，可以在启动阶段调用一次。默认仍是远程 backend；
 只有在本地快照完成复核并获批准后，才设置 `FORBIDDENLAND_MARKET_BACKEND=local` 再调用：

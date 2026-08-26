@@ -1073,6 +1073,25 @@ class AkShareCompat:
             timeout=timeout,
         )
 
+    def stock_zh_a_hist_tx(
+        self,
+        symbol: str = "sz000001",
+        start_date: str = "19000101",
+        end_date: str = "20500101",
+        adjust: str = "",
+        timeout: float | None = None,
+    ) -> Any:
+        """Expose AkShare's Tencent historical endpoint for remote-source failover."""
+
+        return self._dispatch(
+            "stock_zh_a_hist_tx",
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            adjust=adjust,
+            timeout=timeout,
+        )
+
     def stock_info_a_code_name(self) -> Any:
         return self._dispatch("stock_info_a_code_name")
 
@@ -1136,7 +1155,7 @@ def install_local_backend(
     if originals is None:
         originals = {}
         target._forbiddenland_originals = originals  # type: ignore[attr-defined]
-    patch_names = set(LOCAL_ENDPOINTS) | {"stock_zh_a_spot_em"}
+    patch_names = set(LOCAL_ENDPOINTS) | {"stock_zh_a_hist_tx", "stock_zh_a_spot_em"}
     for endpoint in patch_names:
         if endpoint not in originals:
             originals[endpoint] = getattr(target, endpoint, _MISSING_ORIGINAL)

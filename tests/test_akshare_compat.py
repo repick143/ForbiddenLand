@@ -262,9 +262,42 @@ def test_config_defaults_to_remote_backend() -> None:
 
     assert config.backend == "remote"
     assert config.allow_remote_fallback is False
+    assert config.remote_retry_attempts == 3
+    assert config.remote_retry_backoff_seconds == 0.5
+    assert config.remote_request_timeout_seconds == 15.0
+    assert config.remote_alternate_source is True
     assert config.resolved_ths_concept_catalog_file() == (
         Path("data") / "raw" / "行业概念板块" / "行业概念板块_同花顺.parquet"
     )
+
+
+def test_config_reads_remote_recovery_settings() -> None:
+    config = CompatibilityConfig.from_env(
+        {
+            "FORBIDDENLAND_REMOTE_RETRY_ATTEMPTS": "5",
+            "FORBIDDENLAND_REMOTE_RETRY_BACKOFF_SECONDS": "0.25",
+            "FORBIDDENLAND_REMOTE_REQUEST_TIMEOUT_SECONDS": "8",
+            "FORBIDDENLAND_REMOTE_ALTERNATE_SOURCE": "no",
+        }
+    )
+
+    assert config.remote_retry_attempts == 5
+    assert config.remote_retry_backoff_seconds == 0.25
+    assert config.remote_request_timeout_seconds == 8.0
+    assert config.remote_alternate_source is False
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("remote_retry_attempts", 0),
+        ("remote_retry_backoff_seconds", -0.1),
+        ("remote_request_timeout_seconds", 0),
+    ],
+)
+def test_config_rejects_invalid_remote_recovery_settings(field: str, value: object) -> None:
+    with pytest.raises(ConfigurationError, match=field):
+        CompatibilityConfig(**{field: value})  # type: ignore[arg-type]
 
 
 def test_facade_defaults_to_remote_even_when_local_snapshot_exists(
@@ -589,6 +622,37 @@ def test_remote_backend_is_selected_without_touching_local_files() -> None:
     ]
 
 
+def test_remote_tencent_history_interface_forwards_exact_arguments() -> None:
+    calls: list[dict[str, object]] = []
+    remote = ModuleType("fake_akshare")
+
+    def stock_zh_a_hist_tx(**kwargs: object) -> str:
+        calls.append(kwargs)
+        return "remote-tencent-hist"
+
+    remote.stock_zh_a_hist_tx = stock_zh_a_hist_tx  # type: ignore[attr-defined]
+    api = AkShareCompat(CompatibilityConfig(backend="remote"), remote_module=remote)
+
+    result = api.stock_zh_a_hist_tx(
+        symbol="688256",
+        start_date="20240101",
+        end_date="20240131",
+        adjust="qfq",
+        timeout=8,
+    )
+
+    assert result == "remote-tencent-hist"
+    assert calls == [
+        {
+            "symbol": "688256",
+            "start_date": "20240101",
+            "end_date": "20240131",
+            "adjust": "qfq",
+            "timeout": 8,
+        }
+    ]
+
+
 def test_remote_ths_concept_interface_forwards_exact_arguments() -> None:
     calls: list[dict[str, object]] = []
     remote = ModuleType("fake_akshare")
@@ -677,12 +741,15 @@ def test_install_and_uninstall_backend(local_data: Path) -> None:
         assert concepts["code"].tolist() == ["885611.TI", "886009.TI", "886112.TI"]
         with pytest.raises(UnsupportedEndpointError):
             module.stock_zh_a_spot_em()  # type: ignore[attr-defined]
+        with pytest.raises(UnsupportedEndpointError):
+            module.stock_zh_a_hist_tx(symbol="688256")  # type: ignore[attr-defined]
     finally:
         uninstall_backend(module=module)
 
     assert module.stock_zh_a_hist is original_hist  # type: ignore[attr-defined]
     assert module.stock_zh_a_spot_em is original_spot  # type: ignore[attr-defined]
     assert not hasattr(module, "stock_board_concept_name_ths")
+    assert not hasattr(module, "stock_zh_a_hist_tx")
 
 
 def test_installed_backend_can_switch_back_to_remote(local_data: Path) -> None:

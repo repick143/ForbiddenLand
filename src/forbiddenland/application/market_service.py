@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol
 
-from ..domain.market import MarketDataResult, MarketQuery, Security
+from ..domain.market import AssetType, MarketAsset, MarketDataResult, MarketQuery, Security
 
 
 class MarketDataProviderError(RuntimeError):
@@ -24,6 +24,8 @@ class MarketDataProvider(Protocol):
     def source(self) -> str: ...
 
     def list_securities(self) -> Sequence[Security]: ...
+
+    def list_assets(self, asset_type: AssetType) -> Sequence[MarketAsset]: ...
 
     def fetch_history(self, query: MarketQuery) -> MarketDataResult: ...
 
@@ -44,6 +46,21 @@ class MarketDataService:
 
     def list_securities(self) -> tuple[Security, ...]:
         return tuple(self._provider.list_securities())
+
+    def search_assets(
+        self,
+        asset_type: AssetType,
+        *,
+        query: str = "",
+        limit: int = 50,
+    ) -> tuple[MarketAsset, ...]:
+        needle = query.strip().casefold()
+        matches = (
+            asset
+            for asset in self._provider.list_assets(asset_type)
+            if not needle or needle in asset.code.casefold() or needle in asset.name.casefold()
+        )
+        return tuple(list(matches)[:limit])
 
     def get_history(self, query: MarketQuery) -> MarketDataResult:
         result = self._provider.fetch_history(query)

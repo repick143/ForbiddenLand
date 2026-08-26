@@ -7,7 +7,14 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from ..domain.market import Adjustment, MarketBar, MarketDataResult, Security
+from ..domain.market import (
+    Adjustment,
+    AssetType,
+    MarketAsset,
+    MarketBar,
+    MarketDataResult,
+    Security,
+)
 
 
 class HealthResponse(BaseModel):
@@ -37,6 +44,24 @@ class SecurityListResponse(BaseModel):
     items: list[SecurityResponse]
 
 
+class MarketAssetResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    asset_type: AssetType
+    code: str
+    name: str
+
+    @classmethod
+    def from_domain(cls, asset: MarketAsset) -> MarketAssetResponse:
+        return cls.model_validate(asset, from_attributes=True)
+
+
+class MarketAssetListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[MarketAssetResponse]
+
+
 class MarketBarResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -46,7 +71,7 @@ class MarketBarResponse(BaseModel):
     high: float
     low: float
     close: float
-    volume: float
+    volume: float | None
     amount: float | None = None
     change: float | None = None
     change_percent: float | None = None
@@ -85,6 +110,7 @@ class ProvenanceResponse(BaseModel):
 class MarketBarsResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    asset_type: AssetType
     symbol: str
     bars: list[MarketBarResponse]
     summary: MarketSummaryResponse
@@ -93,6 +119,7 @@ class MarketBarsResponse(BaseModel):
     @classmethod
     def from_domain(cls, result: MarketDataResult) -> MarketBarsResponse:
         return cls(
+            asset_type=result.query.asset_type,
             symbol=result.query.symbol,
             bars=[MarketBarResponse.from_domain(bar) for bar in result.bars],
             summary=MarketSummaryResponse.model_validate(result.summary, from_attributes=True),

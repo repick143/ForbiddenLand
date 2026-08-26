@@ -48,6 +48,77 @@
         }
       }
     },
+    "/api/v1/market/assets": {
+      "get": {
+        "tags": [
+          "market"
+        ],
+        "summary": "Assets",
+        "operationId": "assets_api_v1_market_assets_get",
+        "parameters": [
+          {
+            "name": "asset_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "stock",
+                "index",
+                "concept"
+              ],
+              "type": "string",
+              "default": "stock",
+              "title": "Asset Type"
+            }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "default": "",
+              "title": "Query"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketAssetListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/market/bars": {
       "get": {
         "tags": [
@@ -63,7 +134,7 @@
             "schema": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 10,
+              "maxLength": 64,
               "title": "Symbol"
             }
           },
@@ -85,6 +156,21 @@
               "type": "string",
               "format": "date",
               "title": "End Date"
+            }
+          },
+          {
+            "name": "asset_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "stock",
+                "index",
+                "concept"
+              ],
+              "type": "string",
+              "default": "stock",
+              "title": "Asset Type"
             }
           },
           {
@@ -178,6 +264,52 @@
         ],
         "title": "HealthResponse"
       },
+      "MarketAssetListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MarketAssetResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "MarketAssetListResponse"
+      },
+      "MarketAssetResponse": {
+        "properties": {
+          "asset_type": {
+            "type": "string",
+            "enum": [
+              "stock",
+              "index",
+              "concept"
+            ],
+            "title": "Asset Type"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "asset_type",
+          "code",
+          "name"
+        ],
+        "title": "MarketAssetResponse"
+      },
       "MarketBarResponse": {
         "properties": {
           "symbol": {
@@ -206,7 +338,14 @@
             "title": "Close"
           },
           "volume": {
-            "type": "number",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Volume"
           },
           "amount": {
@@ -269,6 +408,15 @@
       },
       "MarketBarsResponse": {
         "properties": {
+          "asset_type": {
+            "type": "string",
+            "enum": [
+              "stock",
+              "index",
+              "concept"
+            ],
+            "title": "Asset Type"
+          },
           "symbol": {
             "type": "string",
             "title": "Symbol"
@@ -290,6 +438,7 @@
         "additionalProperties": false,
         "type": "object",
         "required": [
+          "asset_type",
           "symbol",
           "bars",
           "summary",

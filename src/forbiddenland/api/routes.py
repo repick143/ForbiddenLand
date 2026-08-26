@@ -9,9 +9,11 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from ..application.market_service import MarketDataNotFound, MarketDataProviderError
-from ..domain.market import Adjustment, MarketQuery
+from ..domain.market import Adjustment, AssetType, MarketQuery
 from .schemas import (
     HealthResponse,
+    MarketAssetListResponse,
+    MarketAssetResponse,
     MarketBarsResponse,
     SecurityListResponse,
     SecurityResponse,
@@ -42,12 +44,28 @@ def securities(request: Request) -> SecurityListResponse:
     )
 
 
+@router.get("/market/assets", response_model=MarketAssetListResponse, tags=["market"])
+def assets(
+    request: Request,
+    asset_type: AssetType = "stock",
+    query: Annotated[str, Query(max_length=64)] = "",
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> MarketAssetListResponse:
+    service = request.app.state.market_data_service
+    try:
+        items = service.search_assets(asset_type, query=query, limit=limit)
+    except MarketDataProviderError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    return MarketAssetListResponse(items=[MarketAssetResponse.from_domain(item) for item in items])
+
+
 @router.get("/market/bars", response_model=MarketBarsResponse, tags=["market"])
 def market_bars(
     request: Request,
-    symbol: Annotated[str, Query(min_length=1, max_length=10)],
+    symbol: Annotated[str, Query(min_length=1, max_length=64)],
     start_date: date,
     end_date: date,
+    asset_type: AssetType = "stock",
     adjust: Adjustment = "",
 ) -> MarketBarsResponse:
     try:
@@ -55,6 +73,7 @@ def market_bars(
             symbol=symbol,
             start_date=start_date,
             end_date=end_date,
+            asset_type=asset_type,
             adjust=adjust,
         )
     except ValueError as exc:

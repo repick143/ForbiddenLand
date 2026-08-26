@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from http.client import RemoteDisconnected
 from types import SimpleNamespace
 
 import pytest
@@ -165,4 +166,275 @@ def test_provider_rejects_malformed_optional_values() -> None:
     )
 
     with pytest.raises(MarketDataProviderError, match="non-numeric amount"):
+        provider.fetch_history(_query())
+
+
+def test_provider_lists_stock_concept_and_curated_index_assets() -> None:
+    client = SimpleNamespace(
+        stock_info_a_code_name=lambda: pd.DataFrame({"code": ["688256"], "name": ["寒武纪"]}),
+        stock_board_concept_name_ths=lambda: pd.DataFrame(
+            {"name": ["MLCC概念"], "code": ["886112.TI"]}
+        ),
+    )
+    provider = AkShareMarketProvider(CompatibilityConfig(backend="remote"), client=client)
+
+    assert [(item.code, item.name) for item in provider.list_assets("stock")] == [
+        ("688256", "寒武纪")
+    ]
+    assert [(item.code, item.name) for item in provider.list_assets("concept")] == [
+        ("886112.TI", "MLCC概念")
+    ]
+    assert ("sh000001", "上证指数") in [
+        (item.code, item.name) for item in provider.list_assets("index")
+    ]
+
+
+def test_provider_maps_remote_index_history() -> None:
+    calls: list[dict[str, object]] = []
+
+    def stock_zh_index_daily_em(**kwargs: object) -> object:
+        calls.append(kwargs)
+        return pd.DataFrame(
+            {
+                "date": ["2024-01-02"],
+                "open": [3000.0],
+                "close": [3012.0],
+                "high": [3020.0],
+                "low": [2990.0],
+                "volume": [100000.0],
+                "amount": [200000.0],
+            }
+        )
+
+    provider = AkShareMarketProvider(
+        CompatibilityConfig(backend="remote"),
+        client=SimpleNamespace(stock_zh_index_daily_em=stock_zh_index_daily_em),
+    )
+    query = MarketQuery(
+        symbol="sh000001",
+        asset_type="index",
+        start_date=date(2024, 1, 1),
+        end_date=date(2024, 1, 31),
+    )
+
+    result = provider.fetch_history(query)
+
+    assert calls == [{"symbol": "sh000001", "start_date": "20240101", "end_date": "20240131"}]
+    assert result.query.asset_type == "index"
+    assert result.bars[0].close == 3012.0
+
+
+def test_provider_resolves_concept_code_and_maps_local_shape() -> None:
+    calls: list[dict[str, object]] = []
+
+    def stock_board_concept_index_ths(**kwargs: object) -> object:
+        calls.append(kwargs)
+        return pd.DataFrame(
+            {
+                "日期": [date(2024, 1, 2)],
+                "开盘价": [1000.0],
+                "收盘价": [1010.0],
+                "最高价": [1020.0],
+                "最低价": [995.0],
+                "成交量": [pd.NA],
+                "成交额": [pd.NA],
+            }
+        )
+
+    client = SimpleNamespace(
+        stock_board_concept_name_ths=lambda: pd.DataFrame(
+            {"name": ["MLCC概念"], "code": ["886112.TI"]}
+        ),
+        stock_board_concept_index_ths=stock_board_concept_index_ths,
+    )
+    provider = AkShareMarketProvider(CompatibilityConfig(backend="local"), client=client)
+    query = MarketQuery(
+        symbol="886112.TI",
+        asset_type="concept",
+        start_date=date(2024, 1, 1),
+        end_date=date(2024, 1, 31),
+    )
+
+    result = provider.fetch_history(query)
+
+    assert calls == [{"symbol": "MLCC概念", "start_date": "20240101", "end_date": "20240131"}]
+    assert result.bars[0].close == 1010.0
+    assert result.bars[0].volume is None
+    assert result.bars[0].amount is None
+
+
+def test_non_stock_query_rejects_adjustment() -> None:
+    with pytest.raises(ValueError, match="stock assets only"):
+        MarketQuery(
+            symbol="sh000001",
+            asset_type="index",
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 1, 31),
+            adjust="qfq",
+        )
+
+
+def _tx_frame() -> object:
+    return pd.DataFrame(
+        {
+            "date": ["2024-01-03", "2024-01-02"],
+            "open": [12.0, 10.0],
+            "close": [12.0, 10.0],
+            "high": [12.5, 10.5],
+            "low": [11.5, 9.5],
+            "volume": [1200.0, 1000.0],
+            "amount": [12000.0, 10000.0],
+            # AkShare's Tencent endpoint returns turnover as a fraction.
+            "turnover": [0.02, 0.01],
+        }
+    )
+
+
+def test_provider_retries_transient_remote_disconnect_with_exponential_backoff() -> None:
+    calls: list[dict[str, object]] = []
+    delays: list[float] = []
+    frame = pd.DataFrame(
+        {
+            "日期": ["2024-01-02"],
+            "开盘": [10.0],
+            "收盘": [10.2],
+            "最高": [10.5],
+            "最低": [9.8],
+            "成交量": [1000.0],
+        }
+    )
+
+    def fetch(**kwargs: object) -> object:
+        calls.append(kwargs)
+        if len(calls) < 3:
+            raise RemoteDisconnected("remote closed connection")
+        return frame
+
+    config = CompatibilityConfig(
+        backend="remote",
+        remote_retry_attempts=3,
+        remote_retry_backoff_seconds=0.25,
+        remote_alternate_source=False,
+    )
+    provider = AkShareMarketProvider(
+        config,
+        client=SimpleNamespace(stock_zh_a_hist=fetch),
+        sleeper=delays.append,
+    )
+
+    result = provider.fetch_history(_query())
+
+    assert len(calls) == 3
+    assert delays == [0.25, 0.5]
+    assert calls[0]["timeout"] == 15.0
+    assert result.source == "AkShare remote provider"
+
+
+def test_provider_does_not_retry_non_transient_provider_errors() -> None:
+    calls: list[dict[str, object]] = []
+    delays: list[float] = []
+
+    def fetch(**kwargs: object) -> object:
+        calls.append(kwargs)
+        raise ValueError("invalid request")
+
+    provider = AkShareMarketProvider(
+        CompatibilityConfig(backend="remote", remote_alternate_source=True),
+        client=SimpleNamespace(stock_zh_a_hist=fetch, stock_zh_a_hist_tx=fetch),
+        sleeper=delays.append,
+    )
+
+    with pytest.raises(MarketDataProviderError, match="invalid request"):
+        provider.fetch_history(_query())
+
+    assert len(calls) == 1
+    assert delays == []
+
+
+def test_provider_uses_tencent_endpoint_after_primary_network_failure() -> None:
+    primary_calls: list[dict[str, object]] = []
+    alternate_calls: list[dict[str, object]] = []
+
+    def primary(**kwargs: object) -> object:
+        primary_calls.append(kwargs)
+        raise RemoteDisconnected("remote closed connection")
+
+    def alternate(**kwargs: object) -> object:
+        alternate_calls.append(kwargs)
+        return _tx_frame()
+
+    provider = AkShareMarketProvider(
+        CompatibilityConfig(
+            backend="remote",
+            remote_retry_attempts=2,
+            remote_retry_backoff_seconds=0,
+            remote_alternate_source=True,
+        ),
+        client=SimpleNamespace(stock_zh_a_hist=primary, stock_zh_a_hist_tx=alternate),
+    )
+
+    result = provider.fetch_history(_query())
+
+    assert len(primary_calls) == 2
+    assert len(alternate_calls) == 1
+    assert alternate_calls[0] == {
+        "symbol": "688256",
+        "start_date": "20240101",
+        "end_date": "20240131",
+        "adjust": "qfq",
+        "timeout": 15.0,
+    }
+    assert result.source == "AkShare remote provider (Tencent historical fallback)"
+    assert result.storage == "remote response (Tencent historical fallback)"
+    assert [bar.date for bar in result.bars] == [date(2024, 1, 2), date(2024, 1, 3)]
+    assert result.bars[0].turnover_rate == pytest.approx(1.0)
+    assert result.bars[1].turnover_rate == pytest.approx(2.0)
+    assert result.bars[0].change is None
+    assert result.bars[1].change == pytest.approx(2.0)
+    assert result.bars[1].change_percent == pytest.approx(20.0)
+
+
+def test_provider_can_disable_alternate_remote_endpoint() -> None:
+    calls: list[str] = []
+
+    def primary(**_: object) -> object:
+        calls.append("primary")
+        raise RemoteDisconnected("remote closed connection")
+
+    def alternate(**_: object) -> object:
+        calls.append("alternate")
+        return _tx_frame()
+
+    provider = AkShareMarketProvider(
+        CompatibilityConfig(
+            backend="remote",
+            remote_retry_attempts=1,
+            remote_alternate_source=False,
+        ),
+        client=SimpleNamespace(stock_zh_a_hist=primary, stock_zh_a_hist_tx=alternate),
+    )
+
+    with pytest.raises(MarketDataProviderError, match="remote closed connection"):
+        provider.fetch_history(_query())
+
+    assert calls == ["primary"]
+
+
+def test_provider_reports_primary_and_alternate_failures() -> None:
+    def fail(**_: object) -> object:
+        raise RemoteDisconnected("remote closed connection")
+
+    provider = AkShareMarketProvider(
+        CompatibilityConfig(
+            backend="remote",
+            remote_retry_attempts=1,
+            remote_alternate_source=True,
+        ),
+        client=SimpleNamespace(stock_zh_a_hist=fail, stock_zh_a_hist_tx=fail),
+    )
+
+    with pytest.raises(
+        MarketDataProviderError,
+        match="Primary AkShare stock_zh_a_hist.*Tencent stock_zh_a_hist_tx fallback",
+    ):
         provider.fetch_history(_query())

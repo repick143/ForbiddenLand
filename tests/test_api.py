@@ -14,6 +14,8 @@ from forbiddenland.application.market_service import (
     MarketDataService,
 )
 from forbiddenland.domain.market import (
+    AssetType,
+    MarketAsset,
     MarketBar,
     MarketDataResult,
     MarketQuery,
@@ -27,6 +29,14 @@ class FakeProvider:
 
     def list_securities(self) -> list[Security]:
         return [Security(code="688256", name="寒武纪")]
+
+    def list_assets(self, asset_type: AssetType) -> list[MarketAsset]:
+        items = {
+            "stock": [MarketAsset(asset_type="stock", code="688256", name="寒武纪")],
+            "index": [MarketAsset(asset_type="index", code="sh000001", name="上证指数")],
+            "concept": [MarketAsset(asset_type="concept", code="886112.TI", name="MLCC概念")],
+        }
+        return items[asset_type]
 
     def fetch_history(self, query: MarketQuery) -> MarketDataResult:
         bars = (
@@ -101,12 +111,47 @@ def test_market_route_returns_normalized_bars_and_provenance() -> None:
 
     assert response.status_code == 200
     payload = response.json()
+    assert payload["asset_type"] == "stock"
     assert payload["symbol"] == "688256"
     assert payload["bars"][0]["close"] == 10.2
     assert payload["summary"]["bar_count"] == 2
     assert payload["summary"]["period_change_percent"] == pytest.approx(3.9215686)
     assert payload["provenance"]["adjust"] == "qfq"
     assert payload["provenance"]["local_snapshot_review_required"] is False
+
+
+def test_asset_route_filters_each_supported_asset_type() -> None:
+    app = create_app(market_service=MarketDataService(FakeProvider()))
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/v1/market/assets",
+            params={"asset_type": "concept", "query": "MLCC", "limit": 10},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "items": [{"asset_type": "concept", "code": "886112.TI", "name": "MLCC概念"}]
+    }
+
+
+def test_market_route_accepts_index_asset_queries() -> None:
+    app = create_app(market_service=MarketDataService(FakeProvider()))
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/v1/market/bars",
+            params={
+                "asset_type": "index",
+                "symbol": "sh000001",
+                "start_date": "2024-01-01",
+                "end_date": "2024-01-31",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["asset_type"] == "index"
+    assert response.json()["symbol"] == "sh000001"
 
 
 def test_market_route_maps_provider_failure_to_bad_gateway() -> None:

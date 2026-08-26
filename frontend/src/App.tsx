@@ -1,90 +1,154 @@
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertCircle,
-  ArrowDownRight,
-  ArrowUpRight,
+  Check,
+  ChevronLeft,
+  ChevronRight,
   Database,
+  FolderPlus,
+  Pencil,
+  Plus,
   RefreshCw,
   Server,
+  Trash2,
+  X,
 } from "lucide-react";
 
-import { getHealth, getMarketBars, getSecurities } from "./api/client";
+import { getHealth } from "./api/client";
+import { AssetCard } from "./components/AssetCard";
+import { AssetDetailDialog } from "./components/AssetDetailDialog";
+import { AssetPicker } from "./components/AssetPicker";
 import { getDefaultDateRange } from "./dateRange";
-import type { HealthResponse, MarketBarsResponse, Security } from "./types";
+import type { HealthResponse, MarketAsset, MarketBarsResponse } from "./types";
+import {
+  createGroupId,
+  loadWatchlistGroups,
+  saveWatchlistGroups,
+  type WatchlistGroup,
+} from "./watchlist";
 
 const DEFAULT_DATE_RANGE = getDefaultDateRange();
 
-function formatNumber(value: number | null, digits = 2): string {
-  return value === null ? "--" : value.toLocaleString("zh-CN", { maximumFractionDigits: digits });
-}
-
-function PriceChart({ bars }: { bars: MarketBarsResponse["bars"] }) {
-  const points = useMemo(() => {
-    if (bars.length < 2) return "";
-    const width = 760;
-    const height = 220;
-    const padding = 18;
-    const values = bars.map((bar) => bar.close);
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    const span = max - min || 1;
-    return bars
-      .map((bar, index) => {
-        const x = padding + (index / (bars.length - 1)) * (width - padding * 2);
-        const y = height - padding - ((bar.close - min) / span) * (height - padding * 2);
-        return `${x.toFixed(1)},${y.toFixed(1)}`;
-      })
-      .join(" ");
-  }, [bars]);
-
-  if (!points) {
-    return <div className="chart-empty">选择一个有数据的区间</div>;
-  }
-  return (
-    <svg className="price-chart" viewBox="0 0 760 220" role="img" aria-label="收盘价走势">
-      <line x1="18" y1="202" x2="742" y2="202" className="chart-axis" />
-      <polyline points={points} className="chart-line" />
-    </svg>
-  );
+interface DetailState {
+  asset: MarketAsset;
+  market: MarketBarsResponse;
 }
 
 function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
-  const [securities, setSecurities] = useState<Security[]>([]);
-  const [selectedSymbol, setSelectedSymbol] = useState("688256");
+  const [serviceError, setServiceError] = useState<string | null>(null);
+  const [groups, setGroups] = useState<WatchlistGroup[]>(loadWatchlistGroups);
+  const [activeGroupId, setActiveGroupId] = useState(() => groups[0].id);
+  const [groupEditor, setGroupEditor] = useState<"create" | "rename" | null>(null);
+  const [groupName, setGroupName] = useState("");
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [detail, setDetail] = useState<DetailState | null>(null);
+  const [draftStartDate, setDraftStartDate] = useState(DEFAULT_DATE_RANGE.startDate);
+  const [draftEndDate, setDraftEndDate] = useState(DEFAULT_DATE_RANGE.endDate);
   const [startDate, setStartDate] = useState(DEFAULT_DATE_RANGE.startDate);
   const [endDate, setEndDate] = useState(DEFAULT_DATE_RANGE.endDate);
   const [adjust, setAdjust] = useState<"" | "qfq" | "hfq">("qfq");
-  const [market, setMarket] = useState<MarketBarsResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [pageSize, setPageSize] = useState(6);
+  const [page, setPage] = useState(1);
+  const [refreshToken, setRefreshToken] = useState(0);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([getHealth(), getSecurities()])
-      .then(([healthResponse, securitiesResponse]) => {
-        setHealth(healthResponse);
-        setSecurities(securitiesResponse.items);
+    getHealth()
+      .then((response) => {
+        setHealth(response);
+        setServiceError(null);
       })
       .catch((reason: unknown) => {
-        setError(reason instanceof Error ? reason.message : "无法连接后端服务");
+        setServiceError(reason instanceof Error ? reason.message : "无法连接后端服务");
       });
   }, []);
 
-  const selectedSecurity = securities.find((item) => item.code === selectedSymbol);
-  const periodChange = market?.summary.period_change_percent ?? null;
-  const isPositive = periodChange !== null && periodChange >= 0;
-
-  async function loadMarket() {
-    setLoading(true);
-    setError(null);
+  useEffect(() => {
     try {
-      setMarket(await getMarketBars(selectedSymbol, startDate, endDate, adjust));
-    } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "行情请求失败");
-    } finally {
-      setLoading(false);
+      saveWatchlistGroups(groups);
+    } catch {
+      setNotice("浏览器无法保存自选分组");
     }
+  }, [groups]);
+
+  const activeGroup = groups.find((group) => group.id === activeGroupId) ?? groups[0];
+  const pageCount = Math.max(1, Math.ceil(activeGroup.items.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const visibleItems = activeGroup.items.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  );
+  const existingKeys = useMemo(
+    () => new Set(activeGroup.items.map((item) => `${item.asset_type}:${item.code}`)),
+    [activeGroup.items],
+  );
+
+  useEffect(() => {
+    setPage(1);
+    setDetail(null);
+  }, [activeGroupId, pageSize, startDate, endDate, adjust]);
+
+  function updateActiveGroup(update: (group: WatchlistGroup) => WatchlistGroup) {
+    setGroups((current) =>
+      current.map((group) => (group.id === activeGroup.id ? update(group) : group)),
+    );
+  }
+
+  function openGroupEditor(mode: "create" | "rename") {
+    setGroupName(mode === "rename" ? activeGroup.name : "");
+    setGroupEditor(mode);
+  }
+
+  function submitGroup(event: FormEvent) {
+    event.preventDefault();
+    const name = groupName.trim().slice(0, 40);
+    if (!name) return;
+    if (groupEditor === "create") {
+      const group = { id: createGroupId(), name, items: [] };
+      setGroups((current) => [...current, group]);
+      setActiveGroupId(group.id);
+    } else if (groupEditor === "rename") {
+      updateActiveGroup((group) => ({ ...group, name }));
+    }
+    setGroupEditor(null);
+    setGroupName("");
+  }
+
+  function deleteActiveGroup() {
+    if (groups.length === 1) return;
+    if (!window.confirm(`删除分组“${activeGroup.name}”？`)) return;
+    const remaining = groups.filter((group) => group.id !== activeGroup.id);
+    setGroups(remaining);
+    setActiveGroupId(remaining[0].id);
+  }
+
+  function addAsset(asset: MarketAsset) {
+    const key = `${asset.asset_type}:${asset.code}`;
+    if (existingKeys.has(key)) return;
+    updateActiveGroup((group) => ({ ...group, items: [...group.items, asset] }));
+    setPage(Math.ceil((activeGroup.items.length + 1) / pageSize));
+  }
+
+  function removeAsset(asset: MarketAsset) {
+    updateActiveGroup((group) => ({
+      ...group,
+      items: group.items.filter(
+        (item) => item.asset_type !== asset.asset_type || item.code !== asset.code,
+      ),
+    }));
+  }
+
+  function applyQuery() {
+    if (!draftStartDate || !draftEndDate || draftStartDate > draftEndDate) {
+      setNotice("请选择有效的行情日期区间");
+      return;
+    }
+    setNotice(null);
+    setStartDate(draftStartDate);
+    setEndDate(draftEndDate);
+    setRefreshToken((value) => value + 1);
   }
 
   return (
@@ -95,8 +159,8 @@ function App() {
             <Activity size={18} strokeWidth={2.4} />
           </div>
           <div>
-            <p className="eyebrow">FORBIDDENLAND / RESEARCH</p>
-            <h1>Research Desk</h1>
+            <p className="eyebrow">FORBIDDENLAND / WATCHLIST</p>
+            <h1>自选研究台</h1>
           </div>
         </div>
         <div className={`service-status ${health ? "is-online" : ""}`}>
@@ -105,148 +169,197 @@ function App() {
         </div>
       </header>
 
-      <main className="workspace">
-        <section className="intro-band">
-          <div>
-            <p className="eyebrow">MARKET OVERVIEW</p>
-            <h2>行情观察</h2>
+      <div className="workspace-layout">
+        <aside className="watchlist-sidebar" aria-label="自选分组">
+          <div className="sidebar-heading">
+            <span>自选分组</span>
+            <button
+              type="button"
+              className="icon-button sidebar-icon-button"
+              title="创建分组"
+              aria-label="创建分组"
+              onClick={() => openGroupEditor("create")}
+            >
+              <FolderPlus size={17} />
+            </button>
           </div>
-          <div className="service-meta">
-            <span>
-              <Server size={14} /> {health?.service ?? "forbiddenland-api"}
-            </span>
-            <span>
-              <Database size={14} /> {health?.backend ?? "--"}
-            </span>
+
+          <nav className="group-list">
+            {groups.map((group) => (
+              <button
+                key={group.id}
+                type="button"
+                className={group.id === activeGroup.id ? "group-button is-active" : "group-button"}
+                onClick={() => setActiveGroupId(group.id)}
+              >
+                <span>{group.name}</span>
+                <small>{group.items.length}</small>
+              </button>
+            ))}
+          </nav>
+
+          {groupEditor && (
+            <form className="group-editor" onSubmit={submitGroup}>
+              <input
+                autoFocus
+                maxLength={40}
+                value={groupName}
+                onChange={(event) => setGroupName(event.target.value)}
+                aria-label={groupEditor === "create" ? "新分组名称" : "分组名称"}
+              />
+              <button type="submit" className="icon-button" title="确认" aria-label="确认">
+                <Check size={16} />
+              </button>
+              <button
+                type="button"
+                className="icon-button"
+                title="取消"
+                aria-label="取消"
+                onClick={() => setGroupEditor(null)}
+              >
+                <X size={16} />
+              </button>
+            </form>
+          )}
+
+          <div className="group-actions">
+            <button type="button" onClick={() => openGroupEditor("rename")}>
+              <Pencil size={14} /> 重命名
+            </button>
+            <button type="button" onClick={deleteActiveGroup} disabled={groups.length === 1}>
+              <Trash2 size={14} /> 删除
+            </button>
           </div>
-        </section>
 
-        <section className="control-strip" aria-label="行情查询条件">
-          <label>
-            <span>股票</span>
-            <select value={selectedSymbol} onChange={(event) => setSelectedSymbol(event.target.value)}>
-              {securities.length === 0 && <option value="688256">688256 寒武纪</option>}
-              {securities.map((security) => (
-                <option key={security.code} value={security.code}>
-                  {security.code} {security.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>起始日期</span>
-            <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
-          </label>
-          <label>
-            <span>结束日期</span>
-            <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
-          </label>
-          <label>
-            <span>复权</span>
-            <select value={adjust} onChange={(event) => setAdjust(event.target.value as typeof adjust)}>
-              <option value="qfq">前复权</option>
-              <option value="hfq">后复权</option>
-              <option value="">不复权</option>
-            </select>
-          </label>
-          <button className="primary-button" type="button" onClick={loadMarket} disabled={loading}>
-            <RefreshCw size={16} className={loading ? "spin" : ""} />
-            {loading ? "读取中" : "读取行情"}
-          </button>
-        </section>
-
-        {error && (
-          <div className="notice error-notice" role="alert">
-            <AlertCircle size={17} />
-            <span>{error}</span>
+          <div className="service-meta sidebar-service-meta">
+            <span><Server size={14} /> {health?.service ?? "forbiddenland-api"}</span>
+            <span><Database size={14} /> {health?.backend ?? "--"}</span>
           </div>
-        )}
+        </aside>
 
-        {!market ? (
-          <section className="empty-state">
-            <div className="empty-icon"><Activity size={22} /></div>
-            <h3>{selectedSecurity ? `${selectedSecurity.name} · ${selectedSymbol}` : "选择股票"}</h3>
-            <p>读取行情后，价格区间、来源和数据质量会显示在这里。</p>
+        <main className="watchlist-workspace">
+          <section className="workspace-heading">
+            <div>
+              <p className="eyebrow">MARKET WATCH</p>
+              <h2>{activeGroup.name}</h2>
+              <span>{activeGroup.items.length} 个标的</span>
+            </div>
+            <button type="button" className="primary-button" onClick={() => setPickerOpen(true)}>
+              <Plus size={17} /> 添加标的
+            </button>
           </section>
-        ) : (
-          <>
-            <section className="metric-grid">
-              <article className="metric-card">
-                <span>最新收盘</span>
-                <strong>{formatNumber(market.summary.latest_close)}</strong>
-                <small>{market.summary.latest_date}</small>
-              </article>
-              <article className={`metric-card ${isPositive ? "positive" : "negative"}`}>
-                <span>区间涨跌</span>
-                <strong>{periodChange === null ? "--" : `${isPositive ? "+" : ""}${formatNumber(periodChange)}%`}</strong>
-                <small>{isPositive ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />} {market.summary.bar_count} 根日线</small>
-              </article>
-              <article className="metric-card">
-                <span>区间高点</span>
-                <strong>{formatNumber(market.summary.max_close)}</strong>
-                <small>收盘价</small>
-              </article>
-              <article className="metric-card">
-                <span>区间低点</span>
-                <strong>{formatNumber(market.summary.min_close)}</strong>
-                <small>收盘价</small>
-              </article>
-            </section>
 
-            <section className="analysis-grid">
-              <article className="panel chart-panel">
-                <div className="panel-heading">
-                  <div>
-                    <p className="eyebrow">CLOSE PRICE</p>
-                    <h3>{selectedSecurity?.name ?? market.symbol} · 收盘走势</h3>
-                  </div>
-                  <span className="source-label">{market.provenance.source}</span>
-                </div>
-                <PriceChart bars={market.bars} />
-              </article>
-              <article className="panel provenance-panel">
-                <div className="panel-heading">
-                  <div>
-                    <p className="eyebrow">PROVENANCE</p>
-                    <h3>数据信息</h3>
-                  </div>
-                </div>
-                <dl>
-                  <div><dt>查询区间</dt><dd>{market.provenance.start_date} 至 {market.provenance.end_date}</dd></div>
-                  <div><dt>复权方式</dt><dd>{market.provenance.adjust || "不复权"}</dd></div>
-                  <div><dt>存储路径</dt><dd>{market.provenance.storage}</dd></div>
-                  <div><dt>获取时间</dt><dd>{new Date(market.provenance.retrieved_at_utc).toLocaleString("zh-CN")}</dd></div>
-                  <div><dt>本地快照</dt><dd>{market.provenance.local_snapshot_review_required ? "待复核" : "未使用"}</dd></div>
-                </dl>
-              </article>
-            </section>
+          <section className="query-toolbar" aria-label="行情展示条件">
+            <label>
+              <span>起始日期</span>
+              <input
+                type="date"
+                value={draftStartDate}
+                onChange={(event) => setDraftStartDate(event.target.value)}
+              />
+            </label>
+            <label>
+              <span>结束日期</span>
+              <input
+                type="date"
+                value={draftEndDate}
+                onChange={(event) => setDraftEndDate(event.target.value)}
+              />
+            </label>
+            <label>
+              <span>个股复权</span>
+              <select value={adjust} onChange={(event) => setAdjust(event.target.value as typeof adjust)}>
+                <option value="qfq">前复权</option>
+                <option value="hfq">后复权</option>
+                <option value="">不复权</option>
+              </select>
+            </label>
+            <label>
+              <span>每页展示</span>
+              <select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}>
+                <option value={4}>4 个</option>
+                <option value={6}>6 个</option>
+                <option value={9}>9 个</option>
+              </select>
+            </label>
+            <button type="button" className="refresh-button" onClick={applyQuery}>
+              <RefreshCw size={16} /> 刷新行情
+            </button>
+          </section>
 
-            <section className="panel table-panel">
-              <div className="panel-heading">
-                <div>
-                  <p className="eyebrow">OBSERVATIONS</p>
-                  <h3>最近交易日</h3>
-                </div>
-                <span className="table-count">显示最近 {Math.min(10, market.bars.length)} 条</span>
-              </div>
-              <div className="table-scroll">
-                <table>
-                  <thead><tr><th>日期</th><th>开盘</th><th>最高</th><th>最低</th><th>收盘</th><th>成交量</th><th>涨跌幅</th></tr></thead>
-                  <tbody>
-                    {market.bars.slice(-10).reverse().map((bar) => (
-                      <tr key={bar.date}>
-                        <td>{bar.date}</td><td>{formatNumber(bar.open)}</td><td>{formatNumber(bar.high)}</td>
-                        <td>{formatNumber(bar.low)}</td><td className="close-cell">{formatNumber(bar.close)}</td>
-                        <td>{formatNumber(bar.volume, 0)}</td><td>{bar.change_percent === null ? "--" : `${bar.change_percent >= 0 ? "+" : ""}${formatNumber(bar.change_percent)}%`}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+          {(serviceError || notice) && (
+            <div className="notice error-notice" role="alert">
+              <AlertCircle size={17} />
+              <span>{notice ?? serviceError}</span>
+            </div>
+          )}
+
+          {activeGroup.items.length === 0 ? (
+            <section className="empty-state">
+              <div className="empty-icon"><Activity size={22} /></div>
+              <h3>此分组暂无标的</h3>
+              <button type="button" className="secondary-button" onClick={() => setPickerOpen(true)}>
+                <Plus size={16} /> 添加标的
+              </button>
             </section>
-          </>
-        )}
-      </main>
+          ) : (
+            <>
+              <section className="asset-grid" aria-live="polite">
+                {visibleItems.map((asset) => (
+                  <AssetCard
+                    key={`${asset.asset_type}:${asset.code}`}
+                    asset={asset}
+                    startDate={startDate}
+                    endDate={endDate}
+                    adjust={adjust}
+                    refreshToken={refreshToken}
+                    onOpen={(selectedAsset, market) => setDetail({ asset: selectedAsset, market })}
+                    onRemove={removeAsset}
+                  />
+                ))}
+              </section>
+
+              <nav className="pagination" aria-label="自选行情分页">
+                <button
+                  type="button"
+                  className="icon-button"
+                  title="上一页"
+                  aria-label="上一页"
+                  disabled={currentPage === 1}
+                  onClick={() => setPage((value) => Math.max(1, value - 1))}
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <span>{currentPage} / {pageCount}</span>
+                <button
+                  type="button"
+                  className="icon-button"
+                  title="下一页"
+                  aria-label="下一页"
+                  disabled={currentPage === pageCount}
+                  onClick={() => setPage((value) => Math.min(pageCount, value + 1))}
+                >
+                  <ChevronRight size={18} />
+                </button>
+              </nav>
+            </>
+          )}
+        </main>
+      </div>
+
+      <AssetPicker
+        open={pickerOpen}
+        existingKeys={existingKeys}
+        onAdd={addAsset}
+        onClose={() => setPickerOpen(false)}
+      />
+      {detail && (
+        <AssetDetailDialog
+          asset={detail.asset}
+          market={detail.market}
+          onClose={() => setDetail(null)}
+        />
+      )}
     </div>
   );
 }
