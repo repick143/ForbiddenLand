@@ -40,6 +40,9 @@ focused on durable engineering constraints. Add project-specific rules as the co
 - Until local market snapshots are revalidated and explicitly approved, research demos should
   fetch remote AkShare data through the configured provider path. Do not use existing local
   Parquet or DuckDB snapshots as backtest input by default.
+- The short-term research demo must use `AkShareMarketProvider` for its default remote path rather
+  than calling an AKQuant data helper directly. Preserve the provider's source, storage, and
+  retrieval timestamp in the generated report, including any explicit remote fallback.
 
 ## Cross-Platform Compatibility
 

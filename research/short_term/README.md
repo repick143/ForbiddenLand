@@ -1,16 +1,17 @@
 # Short-Term Research
 
-This direction contains the first runnable AKQuant example. Its default path intentionally uses
-the remote AkShare provider through AKQuant. Existing local Parquet/DuckDB snapshots are not read
-until they have been revalidated and explicitly approved:
+This direction contains the first runnable AKQuant example. Its default path uses the project's
+configured `AkShareMarketProvider`, including bounded retries and the explicit Tencent historical
+fallback, before passing normalized bars to AKQuant. Existing local Parquet/DuckDB snapshots are
+not read until they have been revalidated and explicitly approved:
 
 ```text
-remote AkShare -> normalized pandas frame -> AKQuant backtest -> JSON report
+remote AkShare provider -> normalized pandas frame -> AKQuant backtest -> JSON report
 ```
 
 The default run uses a fixed historical window (`20240101` through `20240331`) and qfq prices.
-The report records the source, window, adjustment mode, and retrieval time. Results are for
-research only, not investment advice.
+The report records the actual provider source and storage (including a Tencent fallback), window,
+adjustment mode, and retrieval time. Results are for research only, not investment advice.
 
 Run it from the repository root with the project's Python environment:
 

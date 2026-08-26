@@ -1,8 +1,8 @@
-"""Run a short-term AKQuant backtest with remote AkShare data.
+"""Run a short-term AKQuant backtest with provider-backed remote AkShare data.
 
-The default path deliberately fetches remote daily data through AKQuant's AkShare helper. The
-synthetic fixture and DuckDB round trip remain available for deterministic unit tests only; local
-market snapshots are not consumed until they have been revalidated.
+The default path fetches remote daily data through the project's provider adapter. The synthetic
+fixture and DuckDB round trip remain available for deterministic unit tests only; local market
+snapshots are not consumed until they have been revalidated.
 """
 
 from __future__ import annotations
@@ -10,7 +10,8 @@ from __future__ import annotations
 import argparse
 import json
 from collections.abc import Callable, Mapping, Sequence
-from datetime import UTC, datetime
+from dataclasses import dataclass
+from datetime import UTC, date, datetime
 from pathlib import Path
 from statistics import fmean
 from typing import Any
@@ -18,6 +19,10 @@ from typing import Any
 import akquant
 import duckdb
 import pandas as pd
+
+from forbiddenland.config import CompatibilityConfig
+from forbiddenland.domain.market import MarketDataResult, MarketQuery
+from forbiddenland.infrastructure.market_data.akshare_provider import AkShareMarketProvider
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATABASE = PROJECT_ROOT / "data" / "cache" / "short_term_demo.duckdb"
@@ -106,6 +111,57 @@ CLOSE_PATHS = {
 }
 
 REMOTE_REQUIRED_COLUMNS = frozenset({"timestamp", "open", "high", "low", "close", "volume"})
+RemoteFetcher = Callable[[str, str, str, str], pd.DataFrame]
+
+
+@dataclass(frozen=True, slots=True)
+class RemoteFetchBatch:
+    """Normalized bars plus the provider provenance used for the batch."""
+
+    frame: pd.DataFrame
+    source: str
+    storage: str
+    retrieved_at_utc: datetime
+
+
+def _parse_remote_date(value: str) -> date:
+    """Convert the demo's compact date arguments into the domain date type."""
+
+    if len(value) != 8 or not value.isdigit():
+        raise ValueError(f"date must use YYYYMMDD format: {value!r}")
+    try:
+        return date.fromisoformat(f"{value[:4]}-{value[4:6]}-{value[6:]}")
+    except ValueError as exc:
+        raise ValueError(f"date must use YYYYMMDD format: {value!r}") from exc
+
+
+def _frame_from_market_result(result: MarketDataResult) -> pd.DataFrame:
+    """Convert normalized domain bars into the OHLCV shape expected by AKQuant."""
+
+    return pd.DataFrame(
+        [
+            {
+                "timestamp": bar.date,
+                "open": bar.open,
+                "high": bar.high,
+                "low": bar.low,
+                "close": bar.close,
+                "volume": bar.volume,
+            }
+            for bar in result.bars
+        ]
+    )
+
+
+def _join_provenance(values: Sequence[str], *, label: str) -> str:
+    """Keep mixed endpoint provenance visible when symbols use different sources."""
+
+    unique = sorted(set(values))
+    if not unique:
+        return "unknown"
+    if len(unique) == 1:
+        return unique[0]
+    return f"mixed {label}: " + "; ".join(unique)
 
 
 def build_fixture() -> pd.DataFrame:
@@ -181,23 +237,51 @@ def normalize_remote_frame(frame: pd.DataFrame, symbol: str) -> pd.DataFrame:
     )
 
 
-def fetch_remote_data(
+def fetch_remote_data_with_metadata(
     start_date: str = DEFAULT_START_DATE,
     end_date: str = DEFAULT_END_DATE,
     adjust: str = DEFAULT_ADJUST,
     *,
-    fetcher: Callable[[str, str, str, str], pd.DataFrame] = akquant.fetch_akshare_symbol,
-) -> pd.DataFrame:
-    """Fetch all standard project securities from the remote AkShare provider.
+    fetcher: RemoteFetcher | None = None,
+    provider: AkShareMarketProvider | None = None,
+) -> RemoteFetchBatch:
+    """Fetch remote bars through the configured provider and retain provenance.
 
-    ``fetcher`` is injectable so tests can validate normalization without making network calls.
-    A missing or malformed symbol is treated as a failed run rather than silently omitted.
+    A custom ``fetcher`` remains available for deterministic tests.  The default path uses the
+    project's provider adapter so bounded retries, the Tencent historical fallback, and backend
+    configuration are applied consistently with the HTTP service.
     """
 
     frames: list[pd.DataFrame] = []
+    sources: list[str] = []
+    storages: list[str] = []
+    retrieved_at: list[datetime] = []
+    configured_provider = provider or AkShareMarketProvider(CompatibilityConfig.from_env())
+    start = _parse_remote_date(start_date)
+    end = _parse_remote_date(end_date)
+    if start > end:
+        raise ValueError("start_date must not be later than end_date")
+
     for symbol in STOCKS:
         try:
-            remote_frame = fetcher(symbol, start_date, end_date, adjust)
+            if fetcher is None:
+                result = configured_provider.fetch_history(
+                    MarketQuery(
+                        symbol=symbol,
+                        start_date=start,
+                        end_date=end,
+                        adjust=adjust,
+                    )
+                )
+                remote_frame = _frame_from_market_result(result)
+                sources.append(result.source)
+                storages.append(result.storage)
+                retrieved_at.append(result.retrieved_at_utc)
+            else:
+                remote_frame = fetcher(symbol, start_date, end_date, adjust)
+                sources.append("custom remote fetcher")
+                storages.append("in-memory DataFrame")
+                retrieved_at.append(datetime.now(UTC))
             frames.append(normalize_remote_frame(remote_frame, symbol))
         except Exception as exc:
             raise RuntimeError(
@@ -205,8 +289,35 @@ def fetch_remote_data(
                 f"between {start_date} and {end_date}: {exc}"
             ) from exc
 
-    result = pd.concat(frames, ignore_index=True)
-    return result.sort_values(["timestamp", "symbol"]).reset_index(drop=True)
+    return RemoteFetchBatch(
+        frame=pd.concat(frames, ignore_index=True)
+        .sort_values(["timestamp", "symbol"])
+        .reset_index(drop=True),
+        source=_join_provenance(sources, label="AkShare sources"),
+        storage=_join_provenance(storages, label="storage paths"),
+        retrieved_at_utc=max(retrieved_at),
+    )
+
+
+def fetch_remote_data(
+    start_date: str = DEFAULT_START_DATE,
+    end_date: str = DEFAULT_END_DATE,
+    adjust: str = DEFAULT_ADJUST,
+    *,
+    fetcher: RemoteFetcher | None = None,
+) -> pd.DataFrame:
+    """Fetch all standard project securities through the configured remote provider.
+
+    ``fetcher`` is injectable so tests can validate normalization without making network calls;
+    the default path uses ``AkShareMarketProvider`` rather than AKQuant's raw helper.
+    """
+
+    return fetch_remote_data_with_metadata(
+        start_date,
+        end_date,
+        adjust,
+        fetcher=fetcher,
+    ).frame
 
 
 class ShortTermMomentumStrategy(akquant.Strategy):
@@ -266,7 +377,7 @@ def _json_value(value: Any) -> Any:
 def build_report(
     result: akquant.BacktestResult,
     *,
-    source: str = "AkShare remote via akquant.fetch_akshare_symbol",
+    source: str = "AkShare remote provider",
     storage: str = "in-memory DataFrame",
     start_date: str | None = None,
     end_date: str | None = None,
@@ -375,14 +486,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         report_path = PROJECT_ROOT / report_path
 
     if args.source == "remote":
-        bars = fetch_remote_data(args.start_date, args.end_date, args.adjust)
+        remote_batch = fetch_remote_data_with_metadata(
+            args.start_date,
+            args.end_date,
+            args.adjust,
+        )
+        bars = remote_batch.frame
         report_kwargs: Mapping[str, Any] = {
-            "source": "AkShare remote via akquant.fetch_akshare_symbol",
-            "storage": "in-memory DataFrame",
+            "source": remote_batch.source,
+            "storage": remote_batch.storage,
             "start_date": args.start_date,
             "end_date": args.end_date,
             "adjust": args.adjust,
-            "retrieved_at_utc": datetime.now(UTC).isoformat(),
+            "retrieved_at_utc": remote_batch.retrieved_at_utc.isoformat(),
         }
     else:
         bars = load_from_duckdb(build_fixture(), database)
@@ -403,7 +519,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.source == "fixture":
         print(f"DuckDB: {database}")
     else:
-        print("Data source: remote AkShare (local snapshots were not read)")
+        print(f"Data source: {remote_batch.source} (local snapshots were not read)")
     print(f"Report: {report_path}")
     return 0
 

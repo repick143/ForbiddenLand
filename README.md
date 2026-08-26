@@ -147,8 +147,10 @@ OpenAPI 契约可用 `python scripts/export_openapi.py` 更新到
 ## 研究方向
 
 研究代码按独立方向放在 `research/` 下。当前的 [`short_term/`](research/short_term/) demo
-默认通过 AKQuant 使用远程 AkShare 数据；现有本地 Parquet/DuckDB 快照尚未作为回测输入，
-需要完成复核并明确批准后再接入。离线测试可显式使用 demo 自带的合成 fixture。
+默认通过项目的 `AkShareMarketProvider` 获取远程 AkShare 数据，再交给 AKQuant 回测；该路径
+包含有限重试和明确的 Tencent 历史端点备选，并把实际来源写入报告。现有本地 Parquet/DuckDB
+快照尚未作为回测输入，需要完成复核并明确批准后再接入。离线测试可显式使用 demo 自带的合成
+fixture。
 
 ## AkShare 本地/远程切换
 
