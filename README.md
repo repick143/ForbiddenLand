@@ -101,12 +101,70 @@ AKShare -> Parquet 原始快照 -> DuckDB 存储/查询 -> 标准化数据
 回测不得在运行过程中临时请求实时数据。应先保存数据源、抓取时间、复权方式和数据版本，
 再使用固定快照执行回测。
 
+## 研究方向
+
+研究代码按独立方向放在 `research/` 下。当前的 [`short_term/`](research/short_term/) demo
+默认通过 AKQuant 使用远程 AkShare 数据；现有本地 Parquet/DuckDB 快照尚未作为回测输入，
+需要完成复核并明确批准后再接入。离线测试可显式使用 demo 自带的合成 fixture。
+
+## AkShare 本地/远程切换
+
+项目提供了 AkShare 兼容入口。业务代码首次接入时使用：
+
+```python
+from forbiddenland.integrations.akshare_compat import ak
+
+daily = ak.stock_zh_a_hist(
+    symbol="000001",
+    period="daily",
+    start_date="20240101",
+    end_date="20241231",
+    adjust="",
+)
+```
+
+数据后端通过环境变量选择，调用代码不需要随之修改：
+
+```text
+FORBIDDENLAND_MARKET_BACKEND=remote      # 默认：调用真实 AkShare
+FORBIDDENLAND_MARKET_BACKEND=local       # 用户复核后显式读取 data/raw/
+FORBIDDENLAND_MARKET_BACKEND=hybrid      # 本地实现优先，回源需另行显式允许
+FORBIDDENLAND_ALLOW_REMOTE_FALLBACK=0    # hybrid 默认不隐式回源
+FORBIDDENLAND_DATA_ROOT=data
+```
+
+本地首批支持 `stock_zh_a_hist`（日线、周线、月线）和 `stock_info_a_code_name`。在本地快照完成
+复核并获明确批准前，默认 backend 是 `remote`；需要读取本地文件时必须显式设置
+`FORBIDDENLAND_MARKET_BACKEND=local`。
+`adjust=""` 使用快照中的原始价格；`qfq`/`hfq` 使用 `adj_factor` 计算。没有本地对应数据的
+接口在 `local` 模式会明确报错；只有在 `hybrid` 且显式设置
+`FORBIDDENLAND_ALLOW_REMOTE_FALLBACK=1` 时才允许回源。日线快照不是实时行情，不能用来冒充
+`stock_zh_a_spot_em`。
+
+已有必须保留 `import akshare as ak` 的脚本，可以在启动阶段调用一次。默认仍是远程 backend；
+只有在本地快照完成复核并获批准后，才设置 `FORBIDDENLAND_MARKET_BACKEND=local` 再调用：
+
+```python
+from forbiddenland.integrations.akshare_compat import install_local_backend
+
+install_local_backend()
+import akshare as ak
+```
+
+之后仍通过上述环境变量切换后端。数据文件本身继续放在 `data/raw/`，并被 Git 忽略。
+
 ## 常用检查
 
 ```bash
 python -m pytest
 python -m ruff format --check .
 python -m ruff check .
+```
+
+只运行兼容层单测：
+
+```bash
+python -m pytest tests/test_akshare_compat.py -q
 ```
 
 ## 目录约定

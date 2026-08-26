@@ -1,0 +1,1 @@
+"""Independent quantitative research directions."""

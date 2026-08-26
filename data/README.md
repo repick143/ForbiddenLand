@@ -25,6 +25,15 @@ Schema 和 SHA-256；不要把文件直接塞进 Git 历史。
 `list_date` 为 `1970-01-01`，应视为待核查的占位值，不能直接用于上市年限等计算。
 `ts_code` 和 `symbol` 均非空且各自唯一；空值不得被默认为零或有效分类。
 
+`raw/stock_daily.parquet` 是日线行情快照（2026-08-26 检查）：约 1,457 万行、33 列，覆盖
+2009-01-05 至 2026-08-21，包含 5,826 个 `ts_code` 和 4,284 个交易日。每个
+`(ts_code, trade_date)` 组合当前无重复。它包含未复权 OHLCV、估值/市值字段和累计
+`adj_factor`；
+没有分钟行情，也不能当作实时行情。兼容层将后复权计算为 `价格 * adj_factor`，前复权计算为
+`价格 * adj_factor / 最新因子`；这套公式依赖当前快照的因子约定，变更前必须做契约测试。
+查询时应使用 DuckDB 的股票代码和日期条件，避免一次性
+将整个文件读入 pandas。
+
 DuckDB 是本项目默认的本地存储层。检查或构建分析副本时，可以直接读取 Parquet 原始文件：
 
 ```sql
@@ -39,3 +48,16 @@ FROM read_parquet('data/raw/stock_basic_data.parquet');
 
 后续快照建议使用 `<source>_<dataset>_<as-of-date>.parquet` 命名；如果源数据没有明确日期，
 应在清单中记录抓取时间和数据有效期，而不是凭文件名推断。
+
+## AkShare 兼容读取
+
+`forbiddenland.integrations.akshare_compat` 提供 AkShare 风格的本地读取入口。由于本地快照仍待
+用户复核，兼容层默认使用远程 AkShare；只有显式设置
+`FORBIDDENLAND_MARKET_BACKEND=local` 后才会读取这些文件。首批支持：
+
+- `stock_zh_a_hist`：从 `raw/stock_daily.parquet` 查询日线，并可由日线聚合周线/月线。
+- `stock_info_a_code_name`：从 `raw/stock_basic_data.parquet` 返回代码和名称。
+
+后端由 `FORBIDDENLAND_MARKET_BACKEND` 控制（`remote`、`local` 或 `hybrid`，默认 `remote`）。本地模式不会因
+数据缺失而偷偷请求网络；`hybrid` 只有同时设置 `FORBIDDENLAND_ALLOW_REMOTE_FALLBACK=1` 时才
+允许对未覆盖接口回源。切换时只改环境变量，业务调用保持不变。

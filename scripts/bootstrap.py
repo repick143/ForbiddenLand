@@ -171,7 +171,7 @@ def verify_imports(python: Path, profile: str) -> None:
 
 
 def run_checks(python: Path, profile: str) -> None:
-    run([python, "-m", "compileall", "-q", "src", "tests", "scripts"])
+    run([python, "-m", "compileall", "-q", "src", "tests", "scripts", "research"])
     if profile in {"dev", "full"}:
         run([python, "-m", "pytest"])
         run([python, "-m", "ruff", "format", "--check", "."])

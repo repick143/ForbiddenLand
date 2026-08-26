@@ -37,6 +37,9 @@ focused on durable engineering constraints. Add project-specific rules as the co
   changed or cross-checked without rewriting strategies.
 - Pin or record the AKQuant version when a result depends on engine behavior, especially order
   execution, fees, risk checks, or market-rule handling.
+- Until local market snapshots are revalidated and explicitly approved, research demos should
+  fetch remote AkShare data through the configured provider path. Do not use existing local
+  Parquet or DuckDB snapshots as backtest input by default.
 
 ## Cross-Platform Compatibility
 
@@ -87,6 +90,21 @@ focused on durable engineering constraints. Add project-specific rules as the co
   security-master dataset with 5,892 rows and 16 columns. It belongs under
   `data/raw/stock_basic_data.parquet`; its source/provider and effective date are not encoded and
   must not be guessed.
+- The local market snapshot `data/raw/stock_daily.parquet` is a large ignored artifact (currently
+  about 14.6 million rows and 33 columns). It contains daily OHLCV, valuation fields, and
+  `adj_factor`, but it is not a realtime or minute-level feed. Do not load the whole file into
+  pandas when a DuckDB predicate can select the requested symbols and dates.
+- Use `forbiddenland.integrations.akshare_compat` as the provider boundary when callers need
+  AkShare-shaped results. `FORBIDDENLAND_MARKET_BACKEND` selects `local`, `remote`, or `hybrid`;
+  remote is the default until local snapshots are revalidated and approved. Local reads require
+  an explicit `FORBIDDENLAND_MARKET_BACKEND=local`, and hybrid may use the network only when
+  `FORBIDDENLAND_ALLOW_REMOTE_FALLBACK=1` is explicit. Missing local data must not silently fall
+  back to an older snapshot.
+- The compatibility layer currently covers `stock_zh_a_hist` and `stock_info_a_code_name` from the
+  supplied snapshots. It derives weekly/monthly bars from daily data. The supplied cumulative
+  `adj_factor` is applied directly for hfq and normalized by the latest factor for qfq; any change
+  to those formulas requires a contract test against a pinned provider sample.
+  Do not represent the daily snapshot as `stock_zh_a_spot_em` realtime data.
 
 ## Code Design
 
@@ -139,7 +157,7 @@ focused on durable engineering constraints. Add project-specific rules as the co
   python -m pytest
   ruff format --check .
   ruff check .
-  python -m compileall -q src tests
+  python -m compileall -q src tests scripts research
   git diff --check
   ```
 
