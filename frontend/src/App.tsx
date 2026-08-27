@@ -2,11 +2,13 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertCircle,
+  BookOpen,
   Check,
   ChevronLeft,
   ChevronRight,
   Database,
   FolderPlus,
+  LayoutDashboard,
   Pencil,
   Plus,
   RefreshCw,
@@ -19,6 +21,7 @@ import { getHealth } from "./api/client";
 import { AssetCard } from "./components/AssetCard";
 import { AssetDetailDialog } from "./components/AssetDetailDialog";
 import { AssetPicker } from "./components/AssetPicker";
+import { StrategyGuide } from "./components/StrategyGuide";
 import { getDefaultDateRange } from "./dateRange";
 import type { HealthResponse, MarketAsset, MarketBarsResponse } from "./types";
 import {
@@ -36,6 +39,7 @@ interface DetailState {
 }
 
 function App() {
+  const [activeView, setActiveView] = useState<"watchlist" | "knowledge">("watchlist");
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [serviceError, setServiceError] = useState<string | null>(null);
   const [groups, setGroups] = useState<WatchlistGroup[]>(loadWatchlistGroups);
@@ -159,17 +163,42 @@ function App() {
             <Activity size={18} strokeWidth={2.4} />
           </div>
           <div>
-            <p className="eyebrow">FORBIDDENLAND / WATCHLIST</p>
+            <p className="eyebrow">FORBIDDENLAND / MARKET RESEARCH</p>
             <h1>自选研究台</h1>
           </div>
         </div>
+        <nav className="view-tabs" aria-label="研究台视图" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeView === "watchlist"}
+            aria-controls="watchlist-view"
+            className={activeView === "watchlist" ? "view-tab is-active" : "view-tab"}
+            onClick={() => setActiveView("watchlist")}
+          >
+            <LayoutDashboard size={15} />
+            <span>自选行情</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeView === "knowledge"}
+            aria-controls="knowledge-view"
+            className={activeView === "knowledge" ? "view-tab is-active" : "view-tab"}
+            onClick={() => setActiveView("knowledge")}
+          >
+            <BookOpen size={15} />
+            <span>量价方法</span>
+          </button>
+        </nav>
         <div className={`service-status ${health ? "is-online" : ""}`}>
           <span className="status-dot" />
           {health ? "API 在线" : "等待 API"}
         </div>
       </header>
 
-      <div className="workspace-layout">
+      {activeView === "watchlist" ? (
+      <div className="workspace-layout" id="watchlist-view" role="tabpanel" aria-label="自选行情">
         <aside className="watchlist-sidebar" aria-label="自选分组">
           <div className="sidebar-heading">
             <span>自选分组</span>
@@ -346,6 +375,11 @@ function App() {
           )}
         </main>
       </div>
+      ) : (
+        <div id="knowledge-view" role="tabpanel" aria-label="量价方法">
+          <StrategyGuide />
+        </div>
+      )}
 
       <AssetPicker
         open={pickerOpen}

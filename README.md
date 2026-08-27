@@ -117,11 +117,33 @@ AKShare -> Parquet 原始快照 -> DuckDB 存储/查询 -> 标准化数据
 前端只负责页面、交互、格式化和图表渲染，不直接打开 DuckDB/Parquet，也不直接调用 AkShare
 或 AKQuant。后端 API 是数据访问、计算、数据来源和回测状态的唯一入口。
 
+推荐从仓库根目录用一个命令启动前后端：
+
+```text
+python scripts/dev.py
+```
+
+脚本会启动或复用后端、启动 Vite，并把同一个 API host/port 注入两个进程，避免后端改端口后
+前端仍代理到旧地址。需要临时使用其他端口时只改一个参数即可：
+
+```text
+python scripts/dev.py --api-port 9093
+```
+
+默认后端端口是 `9092`，前端端口是 `5173`。脚本支持 macOS 和 Windows；按 `Ctrl+C` 会一起
+停止由脚本创建的子进程。
+
+也可以分别启动服务（例如调试独立进程）：
+
 启动后端（仓库根目录）：
 
 ```text
 python -m forbiddenland.api.app
 ```
+
+当前开发阶段后端默认开启 Uvicorn 自动重载，Python/API 修改会自动生效；前端使用 Vite HMR，
+`frontend/src/` 下的修改会自动更新浏览器。只有修改 Vite 配置、依赖或环境变量时才需要重启
+前端开发服务器。若需关闭后端重载，可设置 `FORBIDDENLAND_API_RELOAD=0`。
 
 启动前端（另一个终端）：
 
@@ -131,18 +153,22 @@ npm install
 npm run dev
 ```
 
-开发时前端运行在 `http://127.0.0.1:5173`，`/api` 请求由 Vite 转发到
-`http://127.0.0.1:9092`。后端默认监听 `9092` 端口（可用 `FORBIDDENLAND_API_PORT` 覆盖）。
+开发时前端运行在 `http://127.0.0.1:5173`，所有请求使用版本化的 `/api/v1` 前缀。Vite 会
+从 `FORBIDDENLAND_API_PROXY_TARGET`（优先）或 `FORBIDDENLAND_API_PORT` 解析后端代理目标，
+默认是 `http://127.0.0.1:9092`。分别启动时，后端和前端必须使用同一端口；后端监听非本机
+地址时，前端应显式设置完整的 `FORBIDDENLAND_API_PROXY_TARGET`。
 自选研究台默认使用本地日期的前一个月到今天，支持创建分组并添加个股、指数或同花顺概念，
 每页可展示 4、6 或 9 张日线蜡烛图。分组和标的保存在当前浏览器的 `localStorage`，不会写入
 DuckDB，也不会进入 Git。图表使用 `lightweight-charts`，页面保留 TradingView attribution。
+顶栏的“量价方法” Tab 展示 [`frontend/src/content/volume_price_analysis.md`](frontend/src/content/volume_price_analysis.md)，
+集中介绍 VSA、Wyckoff、VPA 和 Volume Profile，并明确当前本地数据只有日线的边界。
 
 后端提供 `/api/v1/health`、`/api/v1/market/securities`、`/api/v1/market/assets` 和
 `/api/v1/market/bars`。统一资产接口使用 `asset_type=stock|index|concept`；本地模式支持个股和
 已核验的同花顺概念行情，常见宽基指数目录可以搜索，但指数历史行情目前需要远端 AkShare。
 OpenAPI 契约可用 `python scripts/export_openapi.py` 更新到
-`contracts/openapi.json`。生产前端使用 `npm run build` 生成静态资源，仍通过同一 API 契约访问
-后端。
+`contracts/openapi.json`。当前本地验证统一使用开发服务器和 HMR；`npm run build` 仅作为后续
+发布流程使用，仍通过同一 API 契约访问后端。
 
 ## 研究方向
 
