@@ -8,7 +8,9 @@ Schema、清单、校验和以及其他可复现分析所需的轻量元数据�
 - `raw/`：从数据源下载的原始快照，尽量保持来源字节和原始字段不变。
 - `processed/`：清洗、标准化或分析过程中生成的本地数据集；默认通过 DuckDB 存储和查询，
   Parquet 用于快照、交换或导出。
-- `cache/`：可以从原始数据重新构建的临时缓存，不作为唯一数据来源。
+- `cache/`：可以从原始数据重新构建的临时缓存，不作为唯一数据来源。远程 AkShare 历史日线
+  默认由 provider 写入 `cache/akshare/`，使用带 schema 版本和 provenance 的标准化 JSON；这些
+  文件只用于减少相同请求，不是经过复核的本地快照。
 
 这些目录中的 Parquet、DuckDB 和其他大型二进制文件均被 `.gitignore` 忽略。需要共享或长期保存时，
 把文件放到版本化的对象存储、数据集平台或发布附件中，并在仓库中记录地址、版本、抓取时间、
@@ -69,6 +71,11 @@ FROM read_parquet('data/raw/stock_basic_data.parquet');
 后端由 `FORBIDDENLAND_MARKET_BACKEND` 控制（`remote`、`local` 或 `hybrid`，默认 `remote`）。本地模式不会因
 数据缺失而偷偷请求网络；`hybrid` 只有同时设置 `FORBIDDENLAND_ALLOW_REMOTE_FALLBACK=1` 时才
 允许对未覆盖接口回源。切换时只改环境变量，业务调用保持不变。
+
+远程模式默认开启历史日线缓存，可用 `FORBIDDENLAND_REMOTE_CACHE_ENABLED`、
+`FORBIDDENLAND_REMOTE_CACHE_TTL_SECONDS` 和 `FORBIDDENLAND_REMOTE_CACHE_DIR` 调整。缓存键包含
+查询参数和实际 endpoint；有效命中标记为 `cache_hit`，保留原始远程抓取时间。过期或损坏的缓存
+只会触发新的远程请求，不能作为网络失败时的降级数据。
 
 同花顺文件默认从 `raw/行业概念板块/` 解析，也可分别通过
 `FORBIDDENLAND_THS_CONCEPT_CATALOG_FILE`、`FORBIDDENLAND_THS_CONCEPT_MEMBERS_FILE` 和

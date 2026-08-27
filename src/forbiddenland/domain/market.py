@@ -128,6 +128,7 @@ class MarketDataResult:
     storage: str
     retrieved_at_utc: datetime
     local_snapshot_review_required: bool
+    cache_hit: bool = False
 
     def __post_init__(self) -> None:
         if self.retrieved_at_utc.tzinfo is None:

@@ -10,8 +10,10 @@ remote AkShare provider -> normalized pandas frame -> AKQuant backtest -> JSON r
 ```
 
 The default run uses a fixed historical window (`20240101` through `20240331`) and qfq prices.
-The report records the actual provider source and storage (including a Tencent fallback), window,
-adjustment mode, and retrieval time. Results are for research only, not investment advice.
+The provider caches successful remote daily responses for 24 hours by default; a cache hit remains
+remote provenance and is marked in the result. The report records the actual provider source and
+storage (including a Tencent fallback), window, adjustment mode, and retrieval time. Results are
+for research only, not investment advice.
 
 Run it from the repository root with the project's Python environment:
 

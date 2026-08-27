@@ -161,6 +161,7 @@ def test_market_route_returns_normalized_bars_and_provenance() -> None:
     assert payload["summary"]["period_change_percent"] == pytest.approx(3.9215686)
     assert payload["provenance"]["adjust"] == "qfq"
     assert payload["provenance"]["local_snapshot_review_required"] is False
+    assert payload["provenance"]["cache_hit"] is False
 
 
 def test_asset_route_filters_each_supported_asset_type() -> None:

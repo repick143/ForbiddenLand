@@ -105,6 +105,7 @@ class ProvenanceResponse(BaseModel):
     adjust: Adjustment
     retrieved_at_utc: datetime
     local_snapshot_review_required: bool
+    cache_hit: bool
 
 
 class MarketBarsResponse(BaseModel):
@@ -132,5 +133,6 @@ class MarketBarsResponse(BaseModel):
                 adjust=result.query.adjust,
                 retrieved_at_utc=result.retrieved_at_utc,
                 local_snapshot_review_required=result.local_snapshot_review_required,
+                cache_hit=getattr(result, "cache_hit", False),
             ),
         )

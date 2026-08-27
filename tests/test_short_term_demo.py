@@ -93,7 +93,11 @@ def test_default_remote_path_uses_project_provider_and_keeps_provenance() -> Non
         return frame
 
     provider = AkShareMarketProvider(
-        CompatibilityConfig(backend="remote", remote_alternate_source=False),
+        CompatibilityConfig(
+            backend="remote",
+            remote_alternate_source=False,
+            remote_cache_enabled=False,
+        ),
         client=SimpleNamespace(stock_zh_a_hist=fetch),
         clock=lambda: datetime(2024, 2, 1, tzinfo=UTC),
     )

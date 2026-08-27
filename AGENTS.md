@@ -111,6 +111,16 @@ focused on durable engineering constraints. Add project-specific rules as the co
   `FORBIDDENLAND_REMOTE_ALTERNATE_SOURCE` is enabled (the default); the response provenance must
   identify that fallback. This is still remote acquisition and must never become a silent local or
   stale-cache substitution.
+- Remote historical daily-bar responses are cached by the provider by default, while the configured
+  backend remains `remote`. Control this with `FORBIDDENLAND_REMOTE_CACHE_ENABLED` (default `1`),
+  `FORBIDDENLAND_REMOTE_CACHE_TTL_SECONDS` (default 86400), and
+  `FORBIDDENLAND_REMOTE_CACHE_DIR` (default `data/cache/akshare`); the `FORBIDDENLAND_AKSHARE_CACHE_*`
+  names are accepted aliases. Cache keys include the asset, normalized symbol, date range,
+  adjustment mode, daily period, and actual endpoint. Cache entries contain normalized JSON bars,
+  are written atomically, and must not be committed. A valid hit preserves the original remote
+  source and `retrieved_at_utc` and sets `provenance.cache_hit`; expired, malformed, or future-dated
+  entries are ignored and a live request is attempted. A live failure must never fall back to an
+  expired cache, and local or hybrid reads must not be labeled as remote-cache hits.
 - The compatibility layer covers `stock_zh_a_hist`, the remote-only `stock_zh_a_hist_tx`,
   `stock_info_a_code_name`, and the four AKShare
   Tonghuashun concept endpoints (`stock_board_concept_name_ths`, `stock_board_concept_info_ths`,
@@ -160,7 +170,7 @@ focused on durable engineering constraints. Add project-specific rules as the co
 - Represent A-share security codes as strings so leading zeroes are preserved.
 - Distinguish missing data from numeric zero throughout parsing, calculation, and reporting.
 - Record or propagate enough context to identify the data source, observation date, adjustment mode,
-  and relevant calculation parameters.
+  relevant calculation parameters, and whether a remote response came from a valid cache entry.
 - Prefer small modules and direct code over speculative abstraction. Introduce shared abstractions
   only after they remove concrete duplication or enforce a real domain boundary.
 

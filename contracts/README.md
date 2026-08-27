@@ -15,6 +15,10 @@ The versioned `/api/v1` surface currently contains `/health`, `/market/securitie
 must call these paths through `frontend/src/api/client.ts` and represent them in
 `frontend/src/types.ts`. It must not access DuckDB, Parquet, AkShare, or AKQuant directly.
 
+`/market/bars` provenance includes `cache_hit`. A `true` value means the remote provider served a
+valid, unexpired normalized response from its rebuildable local cache; it does not mean the request
+was switched to the reviewed-local backend.
+
 Any request or response change is a coordinated contract change: update the backend route/schema,
 regenerate this document, update the frontend client/types, and add or adjust mocked contract tests
 before merging. Keep API errors explicit and preserve missing data as `null` where the schema allows

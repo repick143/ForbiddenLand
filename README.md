@@ -205,6 +205,9 @@ FORBIDDENLAND_REMOTE_RETRY_ATTEMPTS=3    # 瞬时连接错误的总尝试次数
 FORBIDDENLAND_REMOTE_RETRY_BACKOFF_SECONDS=0.5
 FORBIDDENLAND_REMOTE_REQUEST_TIMEOUT_SECONDS=15
 FORBIDDENLAND_REMOTE_ALTERNATE_SOURCE=1  # 主端点不可用时允许 Tencent AkShare 端点
+FORBIDDENLAND_REMOTE_CACHE_ENABLED=1      # 默认开启远程历史日线缓存
+FORBIDDENLAND_REMOTE_CACHE_TTL_SECONDS=86400
+FORBIDDENLAND_REMOTE_CACHE_DIR=data/cache/akshare
 FORBIDDENLAND_DATA_ROOT=data
 FORBIDDENLAND_THS_CONCEPT_CATALOG_FILE=...  # 可选：覆盖同花顺概念目录
 FORBIDDENLAND_THS_CONCEPT_MEMBERS_FILE=...  # 可选：覆盖同花顺概念成分汇总
@@ -240,6 +243,18 @@ AKShare 同花顺概念接口：
 `stock_zh_a_hist_tx`（腾讯）端点；返回结果的 `provenance.source` 和 `storage` 会明确标记
 `Tencent historical fallback`。参数错误、响应格式错误和数据质量错误不会重试，也不会使用旧缓存
 或未经复核的本地快照替代。若两个远程端点都失败，API 会返回 `502` 及两端点的错误上下文。
+
+远程历史日线默认使用 provider 层缓存。AkShare 的 `stock_zh_a_hist` 并不会替项目提供可控的
+持久化缓存，因此项目把已经校验并标准化的 OHLCV 响应以 UTF-8 JSON 原子写入
+`data/cache/akshare/`；缓存不是本地数据后端，也不改变 `backend=remote`。缓存键包含资产类型、
+标准化代码或概念、日期区间、复权方式、周期和实际 endpoint，避免不同请求互相污染。有效命中
+不会访问网络，响应的 `provenance.source` 和原始 `retrieved_at_utc` 保持不变，并将
+`provenance.cache_hit` 设为 `true`，`storage` 会标明 `cache hit`。默认有效期为 24 小时；过期、
+损坏或时间戳在未来的文件会被忽略并重新请求远端。远端请求失败时不会使用过期缓存。可通过
+`FORBIDDENLAND_REMOTE_CACHE_ENABLED=0` 关闭，或调整 TTL/目录；`FORBIDDENLAND_AKSHARE_CACHE_*`
+是对应的兼容变量名。默认缓存目录和行情 payload 均被 Git 忽略；自定义缓存目录也不应纳入 Git。
+缓存只用于减少重复读取，不是版本化回测快照；需要可复现的正式回测时仍应保存并审核固定的
+数据版本。
 
 已有必须保留 `import akshare as ak` 的脚本，可以在启动阶段调用一次。默认仍是远程 backend；
 只有在本地快照完成复核并获批准后，才设置 `FORBIDDENLAND_MARKET_BACKEND=local` 再调用：

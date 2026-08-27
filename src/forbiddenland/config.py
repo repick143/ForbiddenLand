@@ -88,6 +88,11 @@ class CompatibilityConfig:
     remote_retry_backoff_seconds: float = 0.5
     remote_request_timeout_seconds: float | None = 15.0
     remote_alternate_source: bool = True
+    # Remote historical responses are cached locally by default to avoid repeating identical
+    # AkShare requests. The cache is rebuildable and never becomes a local market-data backend.
+    remote_cache_enabled: bool = True
+    remote_cache_ttl_seconds: float = 86_400.0
+    remote_cache_dir: Path | None = None
 
     def __post_init__(self) -> None:
         backend = str(self.backend).strip().lower()
@@ -121,9 +126,18 @@ class CompatibilityConfig:
         )
         if not isinstance(self.remote_alternate_source, bool):
             raise ConfigurationError("remote_alternate_source must be a boolean")
+        if not isinstance(self.remote_cache_enabled, bool):
+            raise ConfigurationError("remote_cache_enabled must be a boolean")
+        cache_ttl = _parse_float(
+            self.remote_cache_ttl_seconds,
+            default=86_400.0,
+            name="remote_cache_ttl_seconds",
+            minimum=0.0,
+        )
         object.__setattr__(self, "remote_retry_attempts", retry_attempts)
         object.__setattr__(self, "remote_retry_backoff_seconds", retry_backoff)
         object.__setattr__(self, "remote_request_timeout_seconds", request_timeout)
+        object.__setattr__(self, "remote_cache_ttl_seconds", cache_ttl)
         if self.daily_file is not None:
             object.__setattr__(self, "daily_file", Path(self.daily_file).expanduser())
         if self.basic_file is not None:
@@ -146,6 +160,8 @@ class CompatibilityConfig:
                 "ths_sector_quotes_file",
                 Path(self.ths_sector_quotes_file).expanduser(),
             )
+        if self.remote_cache_dir is not None:
+            object.__setattr__(self, "remote_cache_dir", Path(self.remote_cache_dir).expanduser())
 
     @classmethod
     def from_env(
@@ -209,6 +225,22 @@ class CompatibilityConfig:
             remote_alternate_source=_parse_bool(
                 values.get("FORBIDDENLAND_REMOTE_ALTERNATE_SOURCE"), default=True
             ),
+            remote_cache_enabled=_parse_bool(
+                values.get("FORBIDDENLAND_REMOTE_CACHE_ENABLED")
+                or values.get("FORBIDDENLAND_AKSHARE_CACHE_ENABLED"),
+                default=True,
+            ),
+            remote_cache_ttl_seconds=_parse_float(
+                values.get("FORBIDDENLAND_REMOTE_CACHE_TTL_SECONDS")
+                or values.get("FORBIDDENLAND_AKSHARE_CACHE_TTL_SECONDS"),
+                default=86_400.0,
+                name="FORBIDDENLAND_REMOTE_CACHE_TTL_SECONDS",
+                minimum=0.0,
+            ),
+            remote_cache_dir=_path_from_env(
+                values.get("FORBIDDENLAND_REMOTE_CACHE_DIR")
+                or values.get("FORBIDDENLAND_AKSHARE_CACHE_DIR")
+            ),
             daily_file=daily_file,
             basic_file=basic_file,
             ths_concept_catalog_file=ths_concept_catalog_file,
@@ -249,6 +281,11 @@ class CompatibilityConfig:
             self.ths_sector_quotes_file
             or self.data_root / "raw" / "行业概念板块" / "板块指数行情_同花顺_parquet.zip"
         )
+
+    def resolved_remote_cache_dir(self) -> Path:
+        """Return the rebuildable directory for remote AkShare response caches."""
+
+        return self.remote_cache_dir or self.data_root / "cache" / "akshare"
 
 
 # A descriptive alias is useful to callers that think in terms of a backend rather than an

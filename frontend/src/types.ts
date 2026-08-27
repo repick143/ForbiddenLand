@@ -63,5 +63,6 @@ export interface MarketBarsResponse {
     adjust: "" | "qfq" | "hfq";
     retrieved_at_utc: string;
     local_snapshot_review_required: boolean;
+    cache_hit: boolean;
   };
 }

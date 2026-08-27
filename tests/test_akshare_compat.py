@@ -266,6 +266,9 @@ def test_config_defaults_to_remote_backend() -> None:
     assert config.remote_retry_backoff_seconds == 0.5
     assert config.remote_request_timeout_seconds == 15.0
     assert config.remote_alternate_source is True
+    assert config.remote_cache_enabled is True
+    assert config.remote_cache_ttl_seconds == 86_400.0
+    assert config.resolved_remote_cache_dir() == Path("data") / "cache" / "akshare"
     assert config.resolved_ths_concept_catalog_file() == (
         Path("data") / "raw" / "行业概念板块" / "行业概念板块_同花顺.parquet"
     )
@@ -287,12 +290,43 @@ def test_config_reads_remote_recovery_settings() -> None:
     assert config.remote_alternate_source is False
 
 
+def test_config_reads_remote_cache_settings(tmp_path: Path) -> None:
+    config = CompatibilityConfig.from_env(
+        {
+            "FORBIDDENLAND_DATA_ROOT": str(tmp_path),
+            "FORBIDDENLAND_REMOTE_CACHE_ENABLED": "no",
+            "FORBIDDENLAND_REMOTE_CACHE_TTL_SECONDS": "12.5",
+            "FORBIDDENLAND_REMOTE_CACHE_DIR": str(tmp_path / "cache"),
+        }
+    )
+
+    assert config.remote_cache_enabled is False
+    assert config.remote_cache_ttl_seconds == 12.5
+    assert config.resolved_remote_cache_dir() == tmp_path / "cache"
+
+
+def test_config_accepts_akshare_cache_aliases(tmp_path: Path) -> None:
+    config = CompatibilityConfig.from_env(
+        {
+            "FORBIDDENLAND_DATA_ROOT": str(tmp_path),
+            "FORBIDDENLAND_AKSHARE_CACHE_ENABLED": "0",
+            "FORBIDDENLAND_AKSHARE_CACHE_TTL_SECONDS": "30",
+            "FORBIDDENLAND_AKSHARE_CACHE_DIR": "cache-dir",
+        }
+    )
+
+    assert config.remote_cache_enabled is False
+    assert config.remote_cache_ttl_seconds == 30.0
+    assert config.resolved_remote_cache_dir() == Path("cache-dir")
+
+
 @pytest.mark.parametrize(
     "field, value",
     [
         ("remote_retry_attempts", 0),
         ("remote_retry_backoff_seconds", -0.1),
         ("remote_request_timeout_seconds", 0),
+        ("remote_cache_ttl_seconds", -0.1),
     ],
 )
 def test_config_rejects_invalid_remote_recovery_settings(field: str, value: object) -> None:

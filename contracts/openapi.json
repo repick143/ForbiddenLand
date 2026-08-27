@@ -540,6 +540,10 @@
           "local_snapshot_review_required": {
             "type": "boolean",
             "title": "Local Snapshot Review Required"
+          },
+          "cache_hit": {
+            "type": "boolean",
+            "title": "Cache Hit"
           }
         },
         "additionalProperties": false,
@@ -552,7 +556,8 @@
           "end_date",
           "adjust",
           "retrieved_at_utc",
-          "local_snapshot_review_required"
+          "local_snapshot_review_required",
+          "cache_hit"
         ],
         "title": "ProvenanceResponse"
       },

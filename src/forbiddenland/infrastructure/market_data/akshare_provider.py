@@ -22,6 +22,7 @@ from ...domain.market import (
     Security,
 )
 from ...integrations.akshare_compat import AkShareCompat, CompatibilityError
+from .remote_cache import RemoteBarsCache, RemoteCacheEntry
 
 _STOCK_COLUMN_MAP = {
     "日期": "date",
@@ -202,6 +203,11 @@ class AkShareMarketProvider:
         self._clock = clock or (lambda: datetime.now(UTC))
         self._sleeper = sleeper or time.sleep
         self._asset_cache: dict[AssetType, tuple[MarketAsset, ...]] = {}
+        self._remote_cache = RemoteBarsCache(
+            self.config.resolved_remote_cache_dir(),
+            ttl_seconds=self.config.remote_cache_ttl_seconds,
+            enabled=self.config.remote_cache_enabled and self.config.backend == "remote",
+        )
 
     @property
     def backend(self) -> str:
@@ -225,6 +231,44 @@ class AkShareMarketProvider:
 
     def list_securities(self) -> Sequence[Security]:
         return DEFAULT_SECURITIES
+
+    @staticmethod
+    def _cache_storage_label(storage: str) -> str:
+        """Make a cache hit visible without changing the original source label."""
+
+        return f"{storage} (cache hit)"
+
+    def _cache_endpoints(self, query: MarketQuery) -> tuple[str, ...]:
+        if not self._remote_cache.enabled:
+            return ()
+        if query.asset_type == "stock":
+            endpoints = ["stock_zh_a_hist"]
+            if self.config.remote_alternate_source:
+                endpoints.append("stock_zh_a_hist_tx")
+            return tuple(endpoints)
+        if query.asset_type == "index":
+            return ("stock_zh_index_daily_em",)
+        return ("stock_board_concept_index_ths",)
+
+    def _load_cached_result(self, query: MarketQuery, now: datetime) -> MarketDataResult | None:
+        for endpoint in self._cache_endpoints(query):
+            entry = self._remote_cache.load(query, endpoint, now=now)
+            if entry is None:
+                continue
+            return self._result_from_cache(query, entry)
+        return None
+
+    def _result_from_cache(self, query: MarketQuery, entry: RemoteCacheEntry) -> MarketDataResult:
+        return MarketDataResult(
+            query=query,
+            bars=entry.bars,
+            source=entry.source,
+            backend=self.backend,
+            storage=self._cache_storage_label(entry.storage),
+            retrieved_at_utc=entry.retrieved_at_utc,
+            local_snapshot_review_required=False,
+            cache_hit=True,
+        )
 
     @staticmethod
     def _catalog_assets(frame: Any, asset_type: AssetType) -> tuple[MarketAsset, ...]:
@@ -442,14 +486,26 @@ class AkShareMarketProvider:
         return tuple(bars)
 
     def fetch_history(self, query: MarketQuery) -> MarketDataResult:
+        if self._remote_cache.enabled:
+            cached_result = self._load_cached_result(query, self._clock())
+            if cached_result is not None:
+                return cached_result
+
+        endpoint: str
         try:
             if query.asset_type == "stock":
                 frame, column_map, source, storage, alternate_source = self._request_stock_frame(
                     query
                 )
+                endpoint = "stock_zh_a_hist_tx" if alternate_source else "stock_zh_a_hist"
             else:
                 frame, column_map = self._request_frame(query)
                 source, storage, alternate_source = self.source, self.storage, False
+                endpoint = (
+                    "stock_zh_index_daily_em"
+                    if query.asset_type == "index"
+                    else "stock_board_concept_index_ths"
+                )
         except MarketDataProviderError:
             raise
         except CompatibilityError as exc:
@@ -473,12 +529,23 @@ class AkShareMarketProvider:
             derive_changes=alternate_source,
             volume_required=query.asset_type != "concept",
         )
-        return MarketDataResult(
+        retrieved_at = self._clock()
+        result = MarketDataResult(
             query=query,
             bars=bars,
             source=source,
             backend=self.backend,
             storage=storage,
-            retrieved_at_utc=self._clock(),
+            retrieved_at_utc=retrieved_at,
             local_snapshot_review_required=self.config.backend != "remote",
         )
+        if self._remote_cache.enabled:
+            self._remote_cache.store(
+                query,
+                endpoint,
+                bars,
+                source=source,
+                storage=storage,
+                retrieved_at_utc=retrieved_at,
+            )
+        return result
