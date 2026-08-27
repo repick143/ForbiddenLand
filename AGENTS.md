@@ -215,6 +215,17 @@ focused on durable engineering constraints. Add project-specific rules as the co
 - If a check cannot run because a tool or dependency is unavailable, state that explicitly instead
   of reporting it as passed.
 
+## Feature Records
+
+- Record every implemented feature and durable behavior change in the applicable project
+  documentation. Organize the record by functional capability, not by commit, branch, pull
+  request, or date.
+- A feature record should describe its current status, user-facing entry point, relevant module or
+  API boundary, data and platform constraints, verification performed, and known limitations.
+- Update the functional record in the same change when a later feature alters its behavior. Do not
+  use the Git log as the feature inventory, and do not record transient debugging details as a
+  feature.
+
 ## Git Discipline
 
 - Inspect `git status` and the complete diff before committing.
@@ -224,6 +235,9 @@ focused on durable engineering constraints. Add project-specific rules as the co
   constraint, update the applicable `AGENTS.md` in the same change. Record stable rules and
   boundaries, not transient implementation details; review the rule diff together with the feature
   diff before committing.
+- Once a feature is fully implemented and its relevant checks pass, commit the complete feature
+  change and push it to the configured upstream branch directly. Do not push partial or unverified
+  work; verify the resulting remote state and report the commit and push outcome.
 - Do not commit `.env` files, credentials, downloaded market data, caches, databases, or generated
   reports unless the task explicitly requires a reviewed fixture or artifact.
 - Do not rewrite published history or use destructive Git commands unless explicitly requested.
