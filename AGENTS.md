@@ -161,7 +161,9 @@ focused on durable engineering constraints. Add project-specific rules as the co
   multi-user persistence change requires an explicit backend contract and migration decision.
 - Use the official `lightweight-charts` package directly for market charts. Keep the TradingView
   attribution enabled, create chart instances only for visible items, observe container resizing,
-  and remove each instance when its React component unmounts.
+  and remove each instance when its React component unmounts. The current market contract is
+  daily-only, so both compact cards and detail views render daily candlesticks; do not label or
+  transform date-only bars as minute data until an interval-aware backend contract exists.
 - The watchlist grid supports page sizes 4, 6, and 9. Preserve independent loading and error state
   per asset so one unavailable provider response does not hide otherwise valid charts.
 

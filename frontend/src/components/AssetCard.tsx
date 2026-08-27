@@ -123,9 +123,9 @@ export function AssetCard({
             </span>
             <small>{market.summary.latest_date}</small>
           </div>
-          <MarketChart bars={market.bars} positive={positive} />
+          <MarketChart bars={market.bars} />
           <footer className="asset-card-footer">
-            <span>{market.summary.bar_count} 个交易日</span>
+            <span>日线蜡烛图 · {market.summary.bar_count} 个交易日</span>
             <span>{market.provenance.backend}</span>
           </footer>
         </>

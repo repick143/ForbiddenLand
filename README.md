@@ -134,7 +134,7 @@ npm run dev
 开发时前端运行在 `http://127.0.0.1:5173`，`/api` 请求由 Vite 转发到
 `http://127.0.0.1:9092`。后端默认监听 `9092` 端口（可用 `FORBIDDENLAND_API_PORT` 覆盖）。
 自选研究台默认使用本地日期的前一个月到今天，支持创建分组并添加个股、指数或同花顺概念，
-每页可展示 4、6 或 9 张走势图。分组和标的保存在当前浏览器的 `localStorage`，不会写入
+每页可展示 4、6 或 9 张日线蜡烛图。分组和标的保存在当前浏览器的 `localStorage`，不会写入
 DuckDB，也不会进入 Git。图表使用 `lightweight-charts`，页面保留 TradingView attribution。
 
 后端提供 `/api/v1/health`、`/api/v1/market/securities`、`/api/v1/market/assets` 和

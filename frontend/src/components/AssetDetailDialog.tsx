@@ -53,7 +53,7 @@ export function AssetDetailDialog({ asset, market, onClose }: AssetDetailDialogP
           </button>
         </header>
 
-        <MarketChart bars={market.bars} mode="detail" positive={positive} />
+        <MarketChart bars={market.bars} mode="detail" />
 
         <div className="detail-metrics">
           <div><span>区间高点</span><strong>{formatNumber(market.summary.max_close)}</strong></div>

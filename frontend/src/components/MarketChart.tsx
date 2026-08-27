@@ -4,7 +4,6 @@ import {
   ColorType,
   CrosshairMode,
   HistogramSeries,
-  LineSeries,
   createChart,
 } from "lightweight-charts";
 
@@ -13,10 +12,12 @@ import type { MarketBar } from "../types";
 interface MarketChartProps {
   bars: MarketBar[];
   mode?: "compact" | "detail";
-  positive?: boolean;
 }
 
-export function MarketChart({ bars, mode = "compact", positive = true }: MarketChartProps) {
+const CANDLE_UP_COLOR = "#d84a3a";
+const CANDLE_DOWN_COLOR = "#16805e";
+
+export function MarketChart({ bars, mode = "compact" }: MarketChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -53,25 +54,26 @@ export function MarketChart({ bars, mode = "compact", positive = true }: MarketC
       handleScale: mode === "detail",
     });
 
+    const priceSeries = chart.addSeries(CandlestickSeries, {
+      upColor: CANDLE_UP_COLOR,
+      downColor: CANDLE_DOWN_COLOR,
+      borderUpColor: CANDLE_UP_COLOR,
+      borderDownColor: CANDLE_DOWN_COLOR,
+      wickUpColor: CANDLE_UP_COLOR,
+      wickDownColor: CANDLE_DOWN_COLOR,
+      priceLineVisible: false,
+    });
+    priceSeries.setData(
+      bars.map((bar) => ({
+        time: bar.date,
+        open: bar.open,
+        high: bar.high,
+        low: bar.low,
+        close: bar.close,
+      })),
+    );
+
     if (mode === "detail") {
-      const priceSeries = chart.addSeries(CandlestickSeries, {
-        upColor: "#d84a3a",
-        downColor: "#16805e",
-        borderUpColor: "#d84a3a",
-        borderDownColor: "#16805e",
-        wickUpColor: "#d84a3a",
-        wickDownColor: "#16805e",
-        priceLineVisible: false,
-      });
-      priceSeries.setData(
-        bars.map((bar) => ({
-          time: bar.date,
-          open: bar.open,
-          high: bar.high,
-          low: bar.low,
-          close: bar.close,
-        })),
-      );
       const volumeSeries = chart.addSeries(HistogramSeries, {
         priceFormat: { type: "volume" },
         priceScaleId: "volume",
@@ -85,17 +87,12 @@ export function MarketChart({ bars, mode = "compact", positive = true }: MarketC
         bars.filter((bar) => bar.volume !== null).map((bar) => ({
           time: bar.date,
           value: bar.volume ?? 0,
-          color: bar.close >= bar.open ? "rgb(216 74 58 / 42%)" : "rgb(22 128 94 / 42%)",
+          color:
+            bar.close >= bar.open
+              ? "rgb(216 74 58 / 42%)"
+              : "rgb(22 128 94 / 42%)",
         })),
       );
-    } else {
-      const lineSeries = chart.addSeries(LineSeries, {
-        color: positive ? "#d84a3a" : "#16805e",
-        lineWidth: 2,
-        priceLineVisible: false,
-        crosshairMarkerRadius: 4,
-      });
-      lineSeries.setData(bars.map((bar) => ({ time: bar.date, value: bar.close })));
     }
 
     chart.timeScale().fitContent();
@@ -111,7 +108,14 @@ export function MarketChart({ bars, mode = "compact", positive = true }: MarketC
       resizeObserver.disconnect();
       chart.remove();
     };
-  }, [bars, mode, positive]);
+  }, [bars, mode]);
 
-  return <div ref={containerRef} className={`market-chart market-chart-${mode}`} />;
+  return (
+    <div
+      ref={containerRef}
+      className={`market-chart market-chart-${mode}`}
+      role="img"
+      aria-label="日线蜡烛图"
+    />
+  );
 }

@@ -22,8 +22,8 @@ Set `FORBIDDENLAND_API_PROXY_TARGET` when the backend is running on another port
 target remains `http://127.0.0.1:9092`.
 
 The watchlist workspace defaults to the local calendar date one month earlier through today. It
-supports browser-local groups, stock/index/concept search, 4/6/9 item pages, compact trend charts,
-and an expanded candlestick/volume view. Watchlists are stored under
+supports browser-local groups, stock/index/concept search, 4/6/9 item pages, compact daily
+candlestick charts, and an expanded daily candlestick/volume view. Watchlists are stored under
 `forbiddenland.watchlist.v1` in `localStorage`; they are not written to DuckDB or Git.
 
 Charts use the official `lightweight-charts` package with its required TradingView attribution.
