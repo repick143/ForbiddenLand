@@ -10,5 +10,12 @@ python scripts/export_openapi.py
 The generated `openapi.json` is a lightweight control-plane artifact and may be committed. It
 contains endpoint and schema definitions only; it never contains market data or credentials.
 
-The browser application must use `/api/v1` endpoints and must not access DuckDB, Parquet, AkShare,
-or AKQuant directly.
+The versioned `/api/v1` surface currently contains `/health`, `/market/securities`,
+`/market/assets`, and `/market/bars`. FastAPI response models define the wire shape; the frontend
+must call these paths through `frontend/src/api/client.ts` and represent them in
+`frontend/src/types.ts`. It must not access DuckDB, Parquet, AkShare, or AKQuant directly.
+
+Any request or response change is a coordinated contract change: update the backend route/schema,
+regenerate this document, update the frontend client/types, and add or adjust mocked contract tests
+before merging. Keep API errors explicit and preserve missing data as `null` where the schema allows
+it.

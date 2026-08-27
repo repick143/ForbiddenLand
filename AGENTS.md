@@ -138,9 +138,19 @@ focused on durable engineering constraints. Add project-specific rules as the co
   backend through versioned API contracts and must never open DuckDB/Parquet or call AkShare or
   AKQuant directly. Keep API routes thin; market-data access, calculations, provenance, and
   backtest orchestration belong to backend application/infrastructure layers.
+- Treat FastAPI route declarations and Pydantic schemas as the API source of truth. When a feature
+  changes a request or response, update `frontend/src/api/client.ts`, `frontend/src/types.ts`,
+  `contracts/openapi.json` (via the export script), and the relevant contract tests in the same
+  feature change.
 - The local FastAPI service listens on `127.0.0.1:9092` by default, and the Vite development
   proxy must target that port. Keep `FORBIDDENLAND_API_PORT` overrides and frontend proxy changes
   documented together.
+- Use `python scripts/dev.py` as the canonical local launcher. It starts the two services with a
+  shared `FORBIDDENLAND_API_HOST`, `FORBIDDENLAND_API_PORT`, and
+  `FORBIDDENLAND_API_PROXY_TARGET`; separate startup commands must set equivalent values.
+- During the current development phase, use Vite's `npm run dev` with HMR and the backend's
+  Uvicorn auto-reload entry point. Keep `FORBIDDENLAND_API_RELOAD=0` as the explicit opt-out; do not
+  require a production bundle or deployment to verify local frontend changes.
 - The frontend's initial market query range is calculated at runtime from the local calendar date:
   one calendar month before today through today. Do not replace this with a frozen date literal.
 - Keep calculations deterministic where possible: pass data and parameters explicitly instead of

@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import importlib
 from datetime import UTC, date, datetime
+from pathlib import Path
 
 import pytest
 
 fastapi = pytest.importorskip("fastapi")
 pytest.importorskip("httpx")
+pytest.importorskip("uvicorn")
 from fastapi.testclient import TestClient
 
-from forbiddenland.api.app import DEFAULT_API_PORT, create_app
+from forbiddenland.api.app import DEFAULT_API_PORT, DEFAULT_API_RELOAD, create_app
 from forbiddenland.application.market_service import (
     MarketDataProviderError,
     MarketDataService,
@@ -79,6 +82,46 @@ class FailingProvider(FakeProvider):
 
 def test_backend_default_port_is_9092() -> None:
     assert DEFAULT_API_PORT == 9092
+
+
+def test_backend_development_entrypoint_enables_auto_reload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app_module = importlib.import_module("forbiddenland.api.app")
+    captured: dict[str, object] = {}
+
+    def fake_run(application: object, **kwargs: object) -> None:
+        captured["application"] = application
+        captured.update(kwargs)
+
+    monkeypatch.delenv("FORBIDDENLAND_API_RELOAD", raising=False)
+    monkeypatch.setattr("uvicorn.run", fake_run)
+
+    app_module.main()
+
+    assert DEFAULT_API_RELOAD is True
+    assert captured["application"] == "forbiddenland.api.app:app"
+    assert captured["reload"] is True
+    assert captured["reload_dirs"] == [str(Path(app_module.__file__).resolve().parents[2])]
+
+
+def test_backend_development_reload_can_be_explicitly_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app_module = importlib.import_module("forbiddenland.api.app")
+    captured: dict[str, object] = {}
+
+    def fake_run(application: object, **kwargs: object) -> None:
+        captured["application"] = application
+        captured.update(kwargs)
+
+    monkeypatch.setenv("FORBIDDENLAND_API_RELOAD", "0")
+    monkeypatch.setattr("uvicorn.run", fake_run)
+
+    app_module.main()
+
+    assert captured["reload"] is False
+    assert captured["reload_dirs"] is None
 
 
 def test_health_and_security_routes_expose_service_boundary() -> None:

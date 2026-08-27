@@ -82,9 +82,9 @@ function buildSections(): GuideSection[] {
 function renderDocument(): string {
   const seen = new Map<string, number>();
   const renderer = new marked.Renderer();
-  renderer.heading = function heading(this: Renderer, { tokens, depth }: Tokens.Heading) {
+  renderer.heading = function heading(this: Renderer, { text, tokens, depth }: Tokens.Heading) {
     const content = this.parser.parseInline(tokens);
-    const id = uniqueSlug(String(content), seen);
+    const id = uniqueSlug(text, seen);
     return `<h${depth} id="${id}">${content}</h${depth}>\n`;
   };
   const renderTable = renderer.table.bind(renderer);
