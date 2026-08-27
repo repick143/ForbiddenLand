@@ -34,14 +34,15 @@ pyenv version
 python --version
 ```
 
-推荐使用初始化脚本（macOS 和 Windows 均可）：
+项目的支持平台是 Ubuntu Linux。推荐在仓库根目录使用初始化脚本：
 
 ```bash
 python scripts/bootstrap.py
 ```
 
 脚本会创建 `.venv`、安装项目及 `akquant`、`akshare`、DuckDB、Parquet、测试和格式化依赖，
-并执行导入和基础检查。脚本必须由 Python 3.12.x 运行；如果当前解释器版本不符，会给出
+并在 `full` profile 下进入 `frontend/` 使用锁文件执行 `npm ci`。初始化还会创建数据目录并执行导入、
+编译、测试和 lint 基础检查。脚本必须由 Python 3.12.x 运行；如果当前解释器版本不符，会给出
 切换解释器的提示，不会删除已有虚拟环境。
 
 可按需要选择初始化 profile：
@@ -51,12 +52,13 @@ python scripts/bootstrap.py --profile core  # 仅项目和 AKQuant
 python scripts/bootstrap.py --profile data  # 加入 AKShare、DuckDB 和 Parquet
 python scripts/bootstrap.py --profile web   # 后端及其数据依赖（FastAPI、Uvicorn、AkShare、DuckDB）
 python scripts/bootstrap.py --profile dev   # 加入测试和 Ruff
-python scripts/bootstrap.py --profile full  # 以上全部内容（默认）
+python scripts/bootstrap.py --profile full  # 以上全部内容，并初始化前端（默认）
 ```
 
 只想复用现有的 pip、setuptools 和 wheel 时，可以加 `--skip-pip-upgrade`；需要跳过导入、
-编译、测试和 lint 检查时，可以加 `--skip-checks`。缺少的项目依赖仍会按 profile 安装。
-脚本使用 Python 标准库实现，不依赖 Bash、Zsh 或 Windows 专有命令。
+编译、测试和 lint 检查时，可以加 `--skip-checks`；只初始化 Python 环境时，可以加
+`--skip-frontend`。缺少的项目依赖仍会按 profile 安装。前端初始化要求 Node `22.14.x` 和 npm；
+存在 `frontend/package-lock.json` 时使用 `npm ci`，否则使用 `npm install`。
 
 也可以手动安装：
 
@@ -64,31 +66,23 @@ python scripts/bootstrap.py --profile full  # 以上全部内容（默认）
 python -m venv .venv
 python -m pip install --upgrade pip setuptools wheel
 python -m pip install -e ".[dev,data]"
+cd frontend
+npm ci
+cd ..
 ```
 
-Windows PowerShell 的激活命令为：
-
-```powershell
-.venv\Scripts\Activate.ps1
-```
-
-macOS 激活命令为：
+Ubuntu 激活命令为：
 
 ```bash
 source .venv/bin/activate
 ```
 
-Windows 命令提示符也可以使用：
+项目不会把账号、密钥或本地环境配置提交到 Git。如果当前 Ubuntu 架构没有 AKQuant 的匹配
+预编译包，从源码安装时需要 Rust 工具链。
 
-```bat
-.venv\Scripts\activate.bat
-```
-
-项目不会把账号、密钥或本地环境配置提交到 Git。AKQuant 从 PyPI 提供 macOS 和 Windows 的
-预编译包；如果运行在没有匹配 wheel 的架构上，从源码安装时需要 Rust 工具链。
-
-前端使用 Node `22.14.x`，版本记录在 `.node-version` 和 `frontend/package.json`。初始化 Python
-环境不会自动安装 Node 依赖；进入 `frontend/` 后执行 `npm install`。
+前端使用 Node `22.14.x`，版本记录在 `.node-version` 和 `frontend/package.json`；默认 `full`
+初始化会安装 `frontend/node_modules`。精简 profile 不会安装前端依赖，之后可重新运行默认脚本，
+或手动在 `frontend/` 执行 `npm ci`。
 
 ## 组件边界
 
@@ -117,21 +111,36 @@ AKShare -> Parquet 原始快照 -> DuckDB 存储/查询 -> 标准化数据
 前端只负责页面、交互、格式化和图表渲染，不直接打开 DuckDB/Parquet，也不直接调用 AkShare
 或 AKQuant。后端 API 是数据访问、计算、数据来源和回测状态的唯一入口。
 
-推荐从仓库根目录用一个命令启动前后端：
+推荐从仓库根目录用一个命令启动前后端（Ubuntu）：
 
-```text
-python scripts/dev.py
+```bash
+bash scripts/start.sh
 ```
 
-脚本会启动或复用后端、启动 Vite，并把同一个 API host/port 注入两个进程，避免后端改端口后
-前端仍代理到旧地址。需要临时使用其他端口时只改一个参数即可：
+启动脚本会检查 `.venv`、Node/npm 和前端依赖，然后调用 `scripts/dev.py` 启动或复用后端、启动
+Vite，并把同一个 API host/port 注入两个进程，避免后端改端口后前端仍代理到旧地址。需要临时
+使用其他端口时只改一个参数即可：
 
-```text
-python scripts/dev.py --api-port 9093
+```bash
+bash scripts/start.sh --api-port 9093
 ```
 
-默认后端端口是 `9092`，前端端口是 `5173`。脚本支持 macOS 和 Windows；按 `Ctrl+C` 会一起
-停止由脚本创建的子进程。
+默认后端端口是 `9092`，前端端口是 `5173`。按 `Ctrl+C` 会一起停止由脚本创建的子进程。
+如果需要直接使用 Python 编排器，也可以运行 `python scripts/dev.py`。
+
+## 功能记录
+
+### 开发环境初始化与服务启动（已实现）
+
+- 入口：`scripts/bootstrap.py` 初始化 Python、数据目录和（默认 `full` profile）前端 npm
+  依赖；`scripts/start.sh` 校验本地环境后统一启动 FastAPI 与 Vite。
+- 边界：前端仍只通过版本化 API 访问后端；启动器不读取行情数据、不修改 DuckDB/Parquet。
+- 平台：Ubuntu Linux 是支持和验证目标，要求 Python `3.12.10`、Node `22.14.x`、npm 与 Bash。
+- 可选项：`--skip-frontend` 适用于只需要 Python 的初始化；`--api-port` 可为前后端同步指定
+  非默认端口（默认后端 `9092`）。
+- 验证：覆盖 Python 单测、Ruff、compileall、Bash 语法检查、前端生产构建，以及临时端口的
+  前后端健康检查；市场数据仍遵循远程默认和缓存策略。
+- 限制：启动器不会自动下载依赖或启动生产构建；缺少环境时会给出初始化提示。
 
 也可以分别启动服务（例如调试独立进程）：
 
@@ -147,9 +156,9 @@ python -m forbiddenland.api.app
 
 启动前端（另一个终端）：
 
-```text
+```bash
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
@@ -287,6 +296,7 @@ python -m pytest tests/test_akshare_compat.py -q
 ```text
 .
 ├── src/forbiddenland/   # Python 源码
+├── scripts/              # 环境初始化和 Ubuntu 启动入口
 ├── frontend/             # React/Vite/TypeScript 前端
 ├── contracts/            # OpenAPI 等轻量接口契约
 ├── research/             # 独立研究方向

@@ -1,4 +1,4 @@
-"""Initialize the local ForbiddenLand development environment on macOS or Windows."""
+"""Initialize the local ForbiddenLand development environment on Ubuntu/Linux."""
 
 from __future__ import annotations
 
@@ -12,6 +12,8 @@ from collections.abc import Sequence
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+FRONTEND_ROOT = PROJECT_ROOT / "frontend"
+FRONTEND_LOCKFILE = FRONTEND_ROOT / "package-lock.json"
 DEFAULT_VENV = PROJECT_ROOT / ".venv"
 REQUIRED_PYTHON = (3, 12)
 DATA_DIRECTORIES = (
@@ -47,6 +49,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--skip-checks",
         action="store_true",
         help="Skip import, compile, test, and lint checks after installation.",
+    )
+    parser.add_argument(
+        "--skip-frontend",
+        action="store_true",
+        help="Skip Node/npm dependency installation for the full profile.",
     )
     return parser.parse_args(argv)
 
@@ -85,9 +92,9 @@ def command_label(command: Sequence[Path | str]) -> str:
     return " ".join(repr(str(part)) for part in command)
 
 
-def run(command: Sequence[Path | str]) -> None:
+def run(command: Sequence[Path | str], *, cwd: Path = PROJECT_ROOT) -> None:
     print(f"+ {command_label(command)}")
-    subprocess.run([str(part) for part in command], cwd=PROJECT_ROOT, check=True, shell=False)
+    subprocess.run([str(part) for part in command], cwd=cwd, check=True, shell=False)
 
 
 def interpreter_version(executable: Path) -> str:
@@ -147,6 +154,68 @@ def install_dependencies(python: Path, profile: str, skip_pip_upgrade: bool) -> 
     run([python, "-m", "pip", "install", "--editable", install_target(profile)])
 
 
+def parse_node_version(value: str) -> tuple[int, int, int]:
+    """Parse the version string emitted by ``node --version``."""
+
+    normalized = value.strip().removeprefix("v")
+    parts = normalized.split(".", 2)
+    if len(parts) != 3:
+        raise RuntimeError(f"Unable to parse Node.js version: {value!r}")
+    try:
+        major = int(parts[0])
+        minor = int(parts[1])
+        patch = int(parts[2].split("-", 1)[0])
+    except ValueError as exc:
+        raise RuntimeError(f"Unable to parse Node.js version: {value!r}") from exc
+    return major, minor, patch
+
+
+def node_version(executable: str) -> tuple[int, int, int]:
+    result = subprocess.run(
+        [executable, "--version"],
+        cwd=PROJECT_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+        shell=False,
+    )
+    return parse_node_version(result.stdout)
+
+
+def npm_executable() -> str:
+    """Validate the project Node.js range and return the npm executable path."""
+
+    node = shutil.which("node")
+    if node is None:
+        raise RuntimeError("Node.js 22.14.x is required; install Node.js before bootstrapping.")
+    version = node_version(node)
+    if version[0] != 22 or version[1] < 14:
+        found = ".".join(str(part) for part in version)
+        raise RuntimeError(f"Node.js 22.14.x or newer 22.x is required; found {found}.")
+
+    npm = shutil.which("npm")
+    if npm is None:
+        raise RuntimeError("npm was not found on PATH; install it with Node.js 22.14.x.")
+    return npm
+
+
+def install_frontend_dependencies() -> None:
+    """Install the independent frontend with the lockfile when it is available."""
+
+    package_file = FRONTEND_ROOT / "package.json"
+    if not package_file.is_file():
+        raise RuntimeError(f"Frontend package manifest is missing: {package_file}")
+    npm = npm_executable()
+    command = [npm, "ci"] if FRONTEND_LOCKFILE.is_file() else [npm, "install"]
+    run(command, cwd=FRONTEND_ROOT)
+
+
+def frontend_install_requested(profile: str, skip_frontend: bool) -> bool:
+    """Install frontend dependencies only for the complete development profile."""
+
+    return profile == "full" and not skip_frontend
+
+
 def create_data_directories() -> None:
     for directory in DATA_DIRECTORIES:
         directory.mkdir(parents=True, exist_ok=True)
@@ -185,18 +254,18 @@ def run_checks(python: Path, profile: str) -> None:
         run([git, "diff", "--check"])
 
 
-def print_next_steps(venv_dir: Path) -> None:
+def print_next_steps(venv_dir: Path, *, frontend_ready: bool = True) -> None:
     try:
         relative = venv_dir.relative_to(PROJECT_ROOT)
     except ValueError:
         relative = venv_dir
     print("\nInitialization complete.")
-    if os.name == "nt":
-        print(f"PowerShell: {relative / 'Scripts' / 'Activate.ps1'}")
-        print(f"Command Prompt: {relative / 'Scripts' / 'activate.bat'}")
-    else:
-        print(f"macOS/Linux: source {relative / 'bin' / 'activate'}")
+    print(f"Ubuntu/Linux: source {relative / 'bin' / 'activate'}")
     print(f"Interpreter: {venv_python(venv_dir)}")
+    if frontend_ready:
+        print("Start services: bash scripts/start.sh")
+    else:
+        print("Frontend skipped: run `python scripts/bootstrap.py` before `bash scripts/start.sh`.")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -209,10 +278,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         python = create_or_validate_venv(venv_dir)
         create_data_directories()
         install_dependencies(python, args.profile, args.skip_pip_upgrade)
+        frontend_ready = (FRONTEND_ROOT / "node_modules" / ".bin" / "vite").exists()
+        if frontend_install_requested(args.profile, args.skip_frontend):
+            install_frontend_dependencies()
+            frontend_ready = True
         if not args.skip_checks:
             verify_imports(python, args.profile)
             run_checks(python, args.profile)
-        print_next_steps(venv_dir)
+        print_next_steps(venv_dir, frontend_ready=frontend_ready)
         return 0
     except (OSError, RuntimeError, subprocess.CalledProcessError) as exc:
         print(f"Initialization failed: {exc}", file=sys.stderr)

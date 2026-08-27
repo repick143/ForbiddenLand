@@ -22,7 +22,7 @@ python -m research.short_term.demo
 ```
 
 The default run writes only the ignored report `reports/short_term_demo.json`; it does not read
-local market snapshots. Paths and the remote window can be changed on both macOS and Windows:
+local market snapshots. On Ubuntu/Linux, paths and the remote window can be changed with:
 
 ```text
 python -m research.short_term.demo --start-date 20240101 --end-date 20240331 --adjust qfq --report reports/short_term_demo.json

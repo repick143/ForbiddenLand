@@ -17,6 +17,9 @@ focused on durable engineering constraints. Add project-specific rules as the co
   configuration.
 - The repository development baseline is Python 3.12.10. Run `python scripts/bootstrap.py` to
   create or initialize the local environment.
+- On Ubuntu, the default `full` profile also initializes `frontend/node_modules` with the tracked
+  `package-lock.json` (`npm ci`). Use `--skip-frontend` only when a Python-only environment is
+  intentional; the frontend requires Node `22.14.x` and npm.
 - Keep the package compatible with the `requires-python` range in `pyproject.toml`.
 - Install project dependencies with `python -m pip install -e ".[dev,data]"` when needed.
 - Add runtime and development dependencies to the appropriate group in `pyproject.toml`.
@@ -44,26 +47,21 @@ focused on durable engineering constraints. Add project-specific rules as the co
   than calling an AKQuant data helper directly. Preserve the provider's source, storage, and
   retrieval timestamp in the generated report, including any explicit remote fallback.
 
-## Cross-Platform Compatibility
+## Platform Support
 
-- All committed code, scripts, and developer tools must work on both macOS and Windows. If a
-  platform-specific behavior is unavoidable, document the reason, scope, and separate usage in
-  `README.md`.
-- Build filesystem paths with `pathlib.Path` or other standard cross-platform APIs. Do not hard-code
-  `/`, `~`, `/tmp`, `/bin/sh`, `/bin/zsh`, Windows drive letters, or platform-specific path strings.
-- Do not rely on case-sensitive filenames, executable permission bits, symlink behavior, or a
-  particular current working directory.
-- Invoke Python through `sys.executable` in application code and `python -m ...` in documentation;
-  do not assume that `python3`, Bash, Zsh, `sed`, `grep`, or `make` is available on Windows.
-- Use `subprocess` with an argument list and `shell=False` by default. Do not place shell pipelines,
-  redirection, quoting tricks, or shell-only syntax in reusable tools.
-- Use explicit text encodings and newline handling. Preserve source-specific encodings for imported
-  A-share files instead of relying on the operating system default.
+- Ubuntu Linux is the required development and verification platform. Keep the documented setup and
+  startup path working on supported Ubuntu releases; macOS may work but is not a release gate.
+- Windows compatibility is not a project requirement. Do not add Windows-specific branches or
+  instructions unless a future feature explicitly needs them.
+- Build paths in Python with `pathlib.Path` and resolve them from the repository or module location;
+  do not depend on the caller's current working directory.
+- Ubuntu entry points may use Bash and POSIX process conventions when that keeps startup behavior
+  explicit. Reusable Python tools should still use `subprocess` argument lists with `shell=False`.
+- Invoke Python through `sys.executable` in application code and `python -m ...` in documentation.
+  Use explicit text encodings and newline handling, and preserve source-specific encodings for
+  imported A-share files.
 - Use `tempfile`, `os.environ`, `shutil`, and standard Python APIs for temporary files, environment
-  variables, executable lookup, and file operations. Avoid Unix-only signals, `fork`, `/dev/null`,
-  and shell startup-file assumptions.
-- Provide equivalent macOS and Windows instructions for setup, activation, and common commands.
-  When CI is added, run the relevant test and lint jobs on both operating systems.
+  variables, executable lookup, and file operations. Avoid hidden shell startup-file assumptions.
 
 ## Repository Layout
 
@@ -155,9 +153,11 @@ focused on durable engineering constraints. Add project-specific rules as the co
 - The local FastAPI service listens on `127.0.0.1:9092` by default, and the Vite development
   proxy must target that port. Keep `FORBIDDENLAND_API_PORT` overrides and frontend proxy changes
   documented together.
-- Use `python scripts/dev.py` as the canonical local launcher. It starts the two services with a
-  shared `FORBIDDENLAND_API_HOST`, `FORBIDDENLAND_API_PORT`, and
-  `FORBIDDENLAND_API_PROXY_TARGET`; separate startup commands must set equivalent values.
+- Use `bash scripts/start.sh` as the canonical Ubuntu launcher. It validates the local Python and
+  frontend installations, then delegates to `scripts/dev.py` to start both services with a shared
+  `FORBIDDENLAND_API_HOST`, `FORBIDDENLAND_API_PORT`, and `FORBIDDENLAND_API_PROXY_TARGET`.
+- Keep `python scripts/dev.py` usable as the lower-level Python orchestration entry point; separate
+  startup commands must set equivalent API host, port, and proxy values.
 - During the current development phase, use Vite's `npm run dev` with HMR and the backend's
   Uvicorn auto-reload entry point. Keep `FORBIDDENLAND_API_RELOAD=0` as the explicit opt-out; do not
   require a production bundle or deployment to verify local frontend changes.

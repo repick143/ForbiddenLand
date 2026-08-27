@@ -4,22 +4,30 @@ This is the independent React/Vite/TypeScript presentation project. It talks to 
 backend through the versioned `/api/v1` contract and never opens DuckDB, Parquet, or AkShare
 directly.
 
-Use Node `22.14.x` (the version is recorded in `.node-version` and `package.json`). From the
-repository root, the recommended development command starts both services with one shared API
-target:
+Use Node `22.14.x` (the version is recorded in `.node-version` and `package.json`) on Ubuntu Linux.
+From the repository root, initialize the Python and frontend environments first:
 
 ```text
-python scripts/dev.py
+python scripts/bootstrap.py
+```
+
+The default `full` profile installs this project's `node_modules` with `npm ci`. From the repository
+root, the recommended development command starts both services with one shared API target:
+
+```text
+bash scripts/start.sh
 ```
 
 Pass `--api-port 9093` when a different backend port is needed. The launcher injects
 `FORBIDDENLAND_API_PORT` and `FORBIDDENLAND_API_PROXY_TARGET` into both processes, so the browser
 proxy and FastAPI listener cannot drift apart.
 
+`scripts/dev.py` remains available when the Python process orchestrator is needed directly.
+
 For frontend-only work, install and run Vite directly:
 
 ```text
-npm install
+npm ci
 npm run dev
 ```
 
