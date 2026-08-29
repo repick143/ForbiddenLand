@@ -127,6 +127,8 @@ bash scripts/start.sh --api-port 9093
 
 默认后端端口是 `9092`，前端端口是 `5173`。按 `Ctrl+C` 会一起停止由脚本创建的子进程。
 如果需要直接使用 Python 编排器，也可以运行 `python scripts/dev.py`。
+`scripts/start.sh` 会先根据脚本自身位置解析仓库根目录，再从任意工作目录以 `sh` 或 `bash`
+调用都能正确启动。
 
 ## 功能记录
 
@@ -135,10 +137,11 @@ bash scripts/start.sh --api-port 9093
 - 入口：`scripts/bootstrap.py` 初始化 Python、数据目录和（默认 `full` profile）前端 npm
   依赖；`scripts/start.sh` 校验本地环境后统一启动 FastAPI 与 Vite。
 - 边界：前端仍只通过版本化 API 访问后端；启动器不读取行情数据、不修改 DuckDB/Parquet。
-- 平台：Ubuntu Linux 是支持和验证目标，要求 Python `3.12.10`、Node `22.14.x`、npm 与 Bash。
+- 平台：Ubuntu Linux 是支持和验证目标，要求 Python `3.12.10`、Node `22.14.x`、npm；启动器
+  可通过 Bash 或 POSIX sh 调用。
 - 可选项：`--skip-frontend` 适用于只需要 Python 的初始化；`--api-port` 可为前后端同步指定
   非默认端口（默认后端 `9092`）。
-- 验证：覆盖 Python 单测、Ruff、compileall、Bash 语法检查、前端生产构建，以及临时端口的
+- 验证：覆盖 Python 单测、Ruff、compileall、shell 语法检查、前端生产构建，以及临时端口的
   前后端健康检查；市场数据仍遵循远程默认和缓存策略。
 - 限制：启动器不会自动下载依赖或启动生产构建；缺少环境时会给出初始化提示。
 
