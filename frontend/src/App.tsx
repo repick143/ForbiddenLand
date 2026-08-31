@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Database,
   FolderPlus,
+  History as HistoryIcon,
   LayoutDashboard,
   Pencil,
   Plus,
@@ -21,6 +22,7 @@ import { getHealth } from "./api/client";
 import { AssetCard } from "./components/AssetCard";
 import { AssetDetailDialog } from "./components/AssetDetailDialog";
 import { AssetPicker } from "./components/AssetPicker";
+import { AnalysisHistoryView } from "./components/AnalysisHistoryView";
 import { StrategyGuide } from "./components/StrategyGuide";
 import { getDefaultDateRange } from "./dateRange";
 import type { HealthResponse, MarketAsset, MarketBarsResponse } from "./types";
@@ -39,7 +41,7 @@ interface DetailState {
 }
 
 function App() {
-  const [activeView, setActiveView] = useState<"watchlist" | "knowledge">("watchlist");
+  const [activeView, setActiveView] = useState<"watchlist" | "history" | "knowledge">("watchlist");
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [serviceError, setServiceError] = useState<string | null>(null);
   const [groups, setGroups] = useState<WatchlistGroup[]>(loadWatchlistGroups);
@@ -178,6 +180,17 @@ function App() {
           >
             <LayoutDashboard size={15} />
             <span>自选行情</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeView === "history"}
+            aria-controls="history-view"
+            className={activeView === "history" ? "view-tab is-active" : "view-tab"}
+            onClick={() => setActiveView("history")}
+          >
+            <HistoryIcon size={15} />
+            <span>分析历史</span>
           </button>
           <button
             type="button"
@@ -375,6 +388,10 @@ function App() {
           )}
         </main>
       </div>
+      ) : activeView === "history" ? (
+        <div id="history-view" role="tabpanel" aria-label="分析历史">
+          <AnalysisHistoryView />
+        </div>
       ) : (
         <div id="knowledge-view" role="tabpanel" aria-label="量价方法">
           <StrategyGuide />

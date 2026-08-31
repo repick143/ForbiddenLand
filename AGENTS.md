@@ -74,6 +74,11 @@ focused on durable engineering constraints. Add project-specific rules as the co
 - Place tests under `tests/`, mirroring the source layout when practical.
 - Keep downloaded source data under `data/raw/`, transformed local data under `data/processed/`,
   and generated reports under `reports/`.
+- Keep the deliberate, lightweight per-stock analysis journal under
+  `analysis_history/<six-digit-code>/<YYYY-MM-DD>.json`. Each analysis date is one canonical
+  record; new records must load the latest earlier record for the same stock and persist an explicit
+  review outcome. This journal is distinct from raw market data, provider caches, and generated
+  backtest reports.
 - Do not commit ignored runtime data merely to make a local test pass. Use small, documented test
   fixtures when stable sample data is required.
 - Add nested `AGENTS.md` files only when a subtree needs materially different rules.
@@ -176,6 +181,9 @@ focused on durable engineering constraints. Add project-specific rules as the co
 - Distinguish missing data from numeric zero throughout parsing, calculation, and reporting.
 - Record or propagate enough context to identify the data source, observation date, adjustment mode,
   relevant calculation parameters, and whether a remote response came from a valid cache entry.
+- Analysis history records must preserve the analysis date separately from the latest market
+  observation date, retain provider provenance and validation warnings, and expose list/detail access
+  through the versioned API rather than making the frontend read files directly.
 - Prefer small modules and direct code over speculative abstraction. Introduce shared abstractions
   only after they remove concrete duplication or enforce a real domain boundary.
 

@@ -212,10 +212,775 @@
           }
         }
       }
+    },
+    "/api/v1/analysis/history": {
+      "get": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Analysis History",
+        "operationId": "analysis_history_api_v1_analysis_history_get",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 120,
+              "default": "",
+              "title": "Query"
+            }
+          },
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Symbol"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start Date"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End Date"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisHistoryListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/analysis/history/{symbol}/{analysis_date}": {
+      "get": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Analysis History Detail",
+        "operationId": "analysis_history_detail_api_v1_analysis_history__symbol___analysis_date__get",
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32,
+              "title": "Symbol"
+            }
+          },
+          {
+            "name": "analysis_date",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "Analysis Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisRecordResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AnalysisHistoryListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisHistorySummaryResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "warnings"
+        ],
+        "title": "AnalysisHistoryListResponse"
+      },
+      "AnalysisHistorySummaryResponse": {
+        "properties": {
+          "analysis_id": {
+            "type": "string",
+            "title": "Analysis Id"
+          },
+          "analysis_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Analysis Date"
+          },
+          "as_of_date": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of Date"
+          },
+          "asset": {
+            "$ref": "#/components/schemas/MarketAssetResponse"
+          },
+          "headline": {
+            "type": "string",
+            "title": "Headline"
+          },
+          "stance": {
+            "type": "string",
+            "enum": [
+              "bullish",
+              "neutral",
+              "bearish"
+            ],
+            "title": "Stance"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "review_status": {
+            "type": "string",
+            "title": "Review Status"
+          },
+          "previous_analysis_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Analysis Date"
+          },
+          "latest_close": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Close"
+          },
+          "sample_size_bars": {
+            "type": "integer",
+            "title": "Sample Size Bars"
+          },
+          "provenance_source": {
+            "type": "string",
+            "title": "Provenance Source"
+          },
+          "backend": {
+            "type": "string",
+            "title": "Backend"
+          },
+          "cache_hit": {
+            "type": "boolean",
+            "title": "Cache Hit"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "analysis_id",
+          "analysis_date",
+          "as_of_date",
+          "asset",
+          "headline",
+          "stance",
+          "summary",
+          "review_status",
+          "previous_analysis_date",
+          "latest_close",
+          "sample_size_bars",
+          "provenance_source",
+          "backend",
+          "cache_hit"
+        ],
+        "title": "AnalysisHistorySummaryResponse"
+      },
+      "AnalysisPatternResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "timeframe": {
+            "type": "string",
+            "title": "Timeframe"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "evidence": {
+            "type": "string",
+            "title": "Evidence"
+          },
+          "volume_confirmation": {
+            "type": "string",
+            "title": "Volume Confirmation"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "timeframe",
+          "status",
+          "evidence",
+          "volume_confirmation",
+          "confidence"
+        ],
+        "title": "AnalysisPatternResponse"
+      },
+      "AnalysisProvenanceResponse": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "backend": {
+            "type": "string",
+            "title": "Backend"
+          },
+          "storage": {
+            "type": "string",
+            "title": "Storage"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Start Date"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date",
+            "title": "End Date"
+          },
+          "adjust": {
+            "type": "string",
+            "title": "Adjust"
+          },
+          "retrieved_at_utc": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrieved At Utc"
+          },
+          "cache_hit": {
+            "type": "boolean",
+            "title": "Cache Hit"
+          },
+          "frequency": {
+            "type": "string",
+            "title": "Frequency"
+          },
+          "bar_count": {
+            "type": "integer",
+            "title": "Bar Count"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source",
+          "backend",
+          "storage",
+          "start_date",
+          "end_date",
+          "adjust",
+          "retrieved_at_utc",
+          "cache_hit",
+          "frequency",
+          "bar_count"
+        ],
+        "title": "AnalysisProvenanceResponse"
+      },
+      "AnalysisRecordResponse": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "title": "Schema Version"
+          },
+          "analysis_version": {
+            "type": "string",
+            "title": "Analysis Version"
+          },
+          "analysis_id": {
+            "type": "string",
+            "title": "Analysis Id"
+          },
+          "analysis_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Analysis Date"
+          },
+          "as_of_date": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of Date"
+          },
+          "asset": {
+            "$ref": "#/components/schemas/MarketAssetResponse"
+          },
+          "headline": {
+            "type": "string",
+            "title": "Headline"
+          },
+          "stance": {
+            "type": "string",
+            "enum": [
+              "bullish",
+              "neutral",
+              "bearish"
+            ],
+            "title": "Stance"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "latest_close": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Close"
+          },
+          "indicators": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Indicators"
+          },
+          "structure": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Structure"
+          },
+          "patterns": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisPatternResponse"
+            },
+            "type": "array",
+            "title": "Patterns"
+          },
+          "setup": {
+            "$ref": "#/components/schemas/AnalysisSetupResponse"
+          },
+          "review": {
+            "$ref": "#/components/schemas/AnalysisReviewResponse"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/AnalysisProvenanceResponse"
+          },
+          "validation": {
+            "$ref": "#/components/schemas/AnalysisValidationResponse"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Parameters"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          },
+          "created_at_utc": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At Utc"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "schema_version",
+          "analysis_version",
+          "analysis_id",
+          "analysis_date",
+          "as_of_date",
+          "asset",
+          "headline",
+          "stance",
+          "summary",
+          "latest_close",
+          "indicators",
+          "structure",
+          "patterns",
+          "setup",
+          "review",
+          "provenance",
+          "validation",
+          "parameters",
+          "notes",
+          "created_at_utc"
+        ],
+        "title": "AnalysisRecordResponse"
+      },
+      "AnalysisReviewResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "previous_analysis_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Analysis Date"
+          },
+          "previous_stance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Stance"
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "outcome": {
+            "type": "string",
+            "title": "Outcome"
+          },
+          "thesis_status": {
+            "type": "string",
+            "title": "Thesis Status"
+          },
+          "checks": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Checks"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "previous_analysis_date",
+          "previous_stance",
+          "period_start",
+          "period_end",
+          "outcome",
+          "thesis_status",
+          "checks",
+          "summary"
+        ],
+        "title": "AnalysisReviewResponse"
+      },
+      "AnalysisSetupResponse": {
+        "properties": {
+          "direction": {
+            "type": "string",
+            "title": "Direction"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "trigger_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger Price"
+          },
+          "entry_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry Price"
+          },
+          "stop_loss": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Loss"
+          },
+          "target_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Price"
+          },
+          "risk_reward": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Reward"
+          },
+          "invalidation": {
+            "type": "string",
+            "title": "Invalidation"
+          },
+          "risk_note": {
+            "type": "string",
+            "title": "Risk Note"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "direction",
+          "status",
+          "trigger_price",
+          "entry_price",
+          "stop_loss",
+          "target_price",
+          "risk_reward",
+          "invalidation",
+          "risk_note"
+        ],
+        "title": "AnalysisSetupResponse"
+      },
+      "AnalysisValidationResponse": {
+        "properties": {
+          "sample_size_bars": {
+            "type": "integer",
+            "title": "Sample Size Bars"
+          },
+          "backtest_trade_count": {
+            "type": "integer",
+            "title": "Backtest Trade Count"
+          },
+          "minimum_reference_trades": {
+            "type": "integer",
+            "title": "Minimum Reference Trades"
+          },
+          "sample_sufficient": {
+            "type": "boolean",
+            "title": "Sample Sufficient"
+          },
+          "out_of_sample": {
+            "type": "boolean",
+            "title": "Out Of Sample"
+          },
+          "backtest_available": {
+            "type": "boolean",
+            "title": "Backtest Available"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sample_size_bars",
+          "backtest_trade_count",
+          "minimum_reference_trades",
+          "sample_sufficient",
+          "out_of_sample",
+          "backtest_available",
+          "warnings"
+        ],
+        "title": "AnalysisValidationResponse"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {

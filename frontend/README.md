@@ -63,6 +63,12 @@ VSA, Wyckoff, VPA, and Volume Profile, and records the current daily-only data b
 fields needed for a future signal layer. It is bundled with the frontend and does not require a
 market-data request.
 
+The `分析历史` tab reads the versioned analysis journal API. It lists records grouped by stock and
+sorted by analysis date, supports keyword and stock filtering, and opens a detail view with daily /
+weekly indicators, conditional trigger/stop/target levels, the previous-record review, provenance,
+and validation warnings. The frontend never reads `analysis_history/` directly; use
+`frontend/src/api/client.ts` and `frontend/src/types.ts` when the contract changes.
+
 During the current development phase, use `npm run dev` and rely on Vite HMR; do not use a
 production bundle for local verification. `npm run build` remains available for a later release
 workflow. Frontend state, formatting, and chart rendering belong here; market-data access,

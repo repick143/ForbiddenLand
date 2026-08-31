@@ -175,6 +175,21 @@ DuckDB，也不会进入 Git。图表使用 `lightweight-charts`，页面保留 
 顶栏的“量价方法” Tab 展示 [`frontend/src/content/volume_price_analysis.md`](frontend/src/content/volume_price_analysis.md)，
 集中介绍 VSA、Wyckoff、VPA 和 Volume Profile，并明确当前本地数据只有日线的边界。
 
+### 个股分析历史（已实现）
+
+- 入口：`.venv/bin/python -m research.technical_analysis.run`；默认分析生益电子 `688183`
+  和生益科技 `600183`，也可用重复的 `--symbol` 指定支持的代码。
+- 存储：每个自然日一份轻量 JSON，路径为
+  `analysis_history/<六位股票代码>/<YYYY-MM-DD>.json`。同一股票再次分析时，生成器会读取
+  最近一份更早记录，比较期间最高/最低/收盘与上一份触发价、止损和目标，并把结果写入
+  `review`；没有新交易日或首份记录也会明确标记。
+- API：`GET /api/v1/analysis/history` 提供按股票、关键词、日期范围和数量筛选的列表；
+  `GET /api/v1/analysis/history/{symbol}/{analysis_date}` 提供详情。前端“分析历史” Tab
+  按个股分组、日期倒序展示，并可打开指标、形态、条件观察位、复盘、来源和验证警告。
+- 边界：行情仍由 `AkShareMarketProvider` 的远程默认路径获取；记录保留实际来源、复权、
+  抓取时间、缓存命中和数据窗口。技术分析是研究输出，不代表含成本回测或投资建议；损坏
+  的历史文件会在列表响应中作为 warning 暴露，而不是静默忽略。
+
 后端提供 `/api/v1/health`、`/api/v1/market/securities`、`/api/v1/market/assets` 和
 `/api/v1/market/bars`。统一资产接口使用 `asset_type=stock|index|concept`；本地模式支持个股和
 已核验的同花顺概念行情，常见宽基指数目录可以搜索，但指数历史行情目前需要远端 AkShare。
@@ -319,6 +334,7 @@ python -m pytest tests/test_akshare_compat.py -q
 ├── frontend/             # React/Vite/TypeScript 前端
 ├── contracts/            # OpenAPI 等轻量接口契约
 ├── research/             # 独立研究方向
+├── analysis_history/     # 按个股/分析日保存的轻量复盘记录
 ├── tests/                # 自动化测试
 ├── data/raw/             # 原始数据，仅保存在本地
 ├── data/processed/       # 清洗后的本地数据

@@ -9,13 +9,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .. import __version__
+from ..application.analysis_history_service import AnalysisHistoryService
 from ..application.market_service import MarketDataService
 from ..config import CompatibilityConfig
+from ..infrastructure.analysis_history import AnalysisHistoryRepository
 from ..infrastructure.market_data.akshare_provider import AkShareMarketProvider
 from .routes import router
 
 DEFAULT_API_PORT = 9092
 DEFAULT_API_RELOAD = True
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _reload_enabled() -> bool:
@@ -42,18 +45,36 @@ def _cors_origins() -> list[str]:
     return [origin.strip() for origin in configured.split(",") if origin.strip()]
 
 
-def create_app(*, market_service: MarketDataService | None = None) -> FastAPI:
+def _analysis_history_root() -> Path:
+    configured = os.environ.get("FORBIDDENLAND_ANALYSIS_HISTORY_ROOT")
+    if configured and configured.strip():
+        root = Path(configured).expanduser()
+        return root if root.is_absolute() else PROJECT_ROOT / root
+    return PROJECT_ROOT / "analysis_history"
+
+
+def create_app(
+    *,
+    market_service: MarketDataService | None = None,
+    analysis_history_service: AnalysisHistoryService | None = None,
+) -> FastAPI:
     """Create the HTTP app with injectable services for contract and unit tests."""
 
     service = market_service
     if service is None:
         service = MarketDataService(AkShareMarketProvider(CompatibilityConfig.from_env()))
+    history_service = analysis_history_service
+    if history_service is None:
+        history_service = AnalysisHistoryService(
+            AnalysisHistoryRepository(_analysis_history_root())
+        )
     app = FastAPI(
         title="ForbiddenLand API",
         version=__version__,
         description="Backend service for A-share research data and analysis views.",
     )
     app.state.market_data_service = service
+    app.state.analysis_history_service = history_service
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_cors_origins(),

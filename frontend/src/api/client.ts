@@ -1,5 +1,7 @@
 import type {
   AssetType,
+  AnalysisHistoryListResponse,
+  AnalysisRecord,
   HealthResponse,
   MarketAsset,
   MarketAssetListResponse,
@@ -61,4 +63,39 @@ export function getMarketBars(
     adjust: asset.asset_type === "stock" ? adjust : "",
   });
   return request<MarketBarsResponse>(`/api/v1/market/bars?${query.toString()}`, signal);
+}
+
+export interface AnalysisHistoryQuery {
+  query?: string;
+  symbol?: string;
+  startDate?: string;
+  endDate?: string;
+  limit?: number;
+  signal?: AbortSignal;
+}
+
+export function getAnalysisHistory(
+  options: AnalysisHistoryQuery = {},
+): Promise<AnalysisHistoryListResponse> {
+  const query = new URLSearchParams();
+  if (options.query?.trim()) query.set("query", options.query.trim());
+  if (options.symbol?.trim()) query.set("symbol", options.symbol.trim());
+  if (options.startDate) query.set("start_date", options.startDate);
+  if (options.endDate) query.set("end_date", options.endDate);
+  query.set("limit", String(options.limit ?? 200));
+  return request<AnalysisHistoryListResponse>(
+    `/api/v1/analysis/history?${query.toString()}`,
+    options.signal,
+  );
+}
+
+export function getAnalysisRecord(
+  symbol: string,
+  analysisDate: string,
+  signal?: AbortSignal,
+): Promise<AnalysisRecord> {
+  return request<AnalysisRecord>(
+    `/api/v1/analysis/history/${encodeURIComponent(symbol)}/${encodeURIComponent(analysisDate)}`,
+    signal,
+  );
 }
