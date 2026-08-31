@@ -15,7 +15,8 @@ without coupling unrelated studies.
   Its fixture is synthetic and the default remote path uses `AkShareMarketProvider`.
 - [`technical_analysis/`](technical_analysis/): a reproducible multi-timeframe technical-analysis
   generator for 生益电子 (`688183`), 生益科技 (`600183`), 甬矽电子 (`688362`), 云南锗业 (`002428`),
-  晓程科技 (`300139`), 景旺电子 (`603228`) and 超纯应材 (`301717`). It writes the latest observation
+  晓程科技 (`300139`), 行云科技 (`300209`), 景旺电子 (`603228`) and 超纯应材 (`301717`). It
+  writes the latest observation
   and conditional risk levels to the date-partitioned `../analysis_history/` journal, and compares
   each new record with the latest earlier record for the same stock.
 - [`../frontend/src/content/volume_price_analysis.md`](../frontend/src/content/volume_price_analysis.md):

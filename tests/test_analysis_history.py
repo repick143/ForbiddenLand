@@ -44,6 +44,7 @@ def test_history_is_partitioned_by_stock_and_analysis_date(tmp_path: Path) -> No
         ("688362", "甬矽电子"),
         ("002428", "云南锗业"),
         ("300139", "晓程科技"),
+        ("300209", "行云科技"),
         ("603228", "景旺电子"),
         ("301717", "超纯应材"),
     ),
