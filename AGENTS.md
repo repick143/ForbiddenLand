@@ -46,6 +46,11 @@ focused on durable engineering constraints. Add project-specific rules as the co
 - The short-term research demo must use `AkShareMarketProvider` for its default remote path rather
   than calling an AKQuant data helper directly. Preserve the provider's source, storage, and
   retrieval timestamp in the generated report, including any explicit remote fallback.
+- The daily VSA demo under `research/vsa/` uses 生益电子 (`688183`); do not confuse it with the
+  standard fixture 生益科技 (`600183`). VSA candidates and confirmations must remain separate,
+  rolling baselines must use prior bars only, and the AKQuant path must keep `NextOpen`, explicit
+  A-share costs, lot size, and `t_plus_one=True`. Synthetic VSA fixtures are offline plumbing tests,
+  not validated market data or investment advice.
 
 ## Platform Support
 

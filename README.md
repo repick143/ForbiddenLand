@@ -188,7 +188,23 @@ OpenAPI 契约可用 `python scripts/export_openapi.py` 更新到
 默认通过项目的 `AkShareMarketProvider` 获取远程 AkShare 数据，再交给 AKQuant 回测；该路径
 包含有限重试和明确的 Tencent 历史端点备选，并把实际来源写入报告。现有本地 Parquet/DuckDB
 快照尚未作为回测输入，需要完成复核并明确批准后再接入。离线测试可显式使用 demo 自带的合成
-fixture。
+fixture。另有 [`vsa/`](research/vsa/) 日线 VSA demo，默认分析生益电子 `688183`（不是项目
+标准夹具中的生益科技 `600183`），按“特征 -> 候选 -> 下一根确认 -> AKQuant”生成指标和回测
+报告；其远程数据同样经 provider 获取，合成 fixture 仅用于离线验证。
+
+### 日线 VSA 指标与回测（已实现）
+
+- 入口：`.venv/bin/python -m research.vsa.run`；`--source fixture` 提供不依赖网络的合成
+  演示，默认 remote 路径请求生益电子 `688183` 的日线数据。
+- 模块：`research/vsa/features.py` 负责前置滚动基线、Spread/CLV/量比和数据质量；
+  `research/vsa/rules.py` 负责五类候选及后一根确认/失效；`research/vsa/strategy.py` 通过
+  `Bar.extra` 接入 AKQuant，并记录指标点；`research/vsa/run.py` 负责 provider、回测和 JSON
+  报告。
+- 执行边界：`NextOpen()`、100 股整手、佣金/印花税/过户费/滑点和 `t_plus_one=True` 均显式
+  配置；新买入仓位在次日可卖时才挂真实止损，目标价按日 K 线高点观察后次开盘退出。
+- 数据与验证：报告保留来源、后端、存储、复权和抓取时间，保存参数版本及候选证据；单标的
+  合成样本低于 30 笔参考交易且没有样本外验证，不代表策略存在统计优势。详细限制和命令见
+  [`research/vsa/README.md`](research/vsa/README.md)。
 
 ## AkShare 本地/远程切换
 
