@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import argparse
 import json
+from calendar import monthrange
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import akquant
 import numpy as np
@@ -30,12 +32,16 @@ from .strategy import VSA_ORDER_SIZE, VSAStrategy
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEMO_SYMBOL = "688183"
 DEMO_NAME = "生益电子"
+DEFAULT_LOOKBACK_MONTHS = 3
+# Kept for callers that explicitly reproduce the original demo window.  Runtime defaults use the
+# rolling window helpers below instead of these legacy aliases.
 DEFAULT_START_DATE = "20240101"
 DEFAULT_END_DATE = "20241231"
 DEFAULT_ADJUST = "qfq"
 DEFAULT_REPORT = PROJECT_ROOT / "reports" / "vsa_688183.json"
 DEFAULT_INDICATORS = PROJECT_ROOT / "reports" / "vsa_688183_indicators.json"
 DEFAULT_INITIAL_CASH = 100_000.0
+_SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
 
 _REQUIRED_COLUMNS = frozenset({"timestamp", "open", "high", "low", "close", "volume"})
 
@@ -59,6 +65,63 @@ def _parse_date(value: str) -> date:
         return date.fromisoformat(f"{value[:4]}-{value[4:6]}-{value[6:]}")
     except ValueError as exc:
         raise ValueError(f"date must use YYYYMMDD format: {value!r}") from exc
+
+
+def recent_date_window(
+    as_of: date | datetime | None = None,
+    months: int = DEFAULT_LOOKBACK_MONTHS,
+) -> tuple[str, str]:
+    """Return a rolling calendar-month window as ``YYYYMMDD`` strings.
+
+    The end date defaults to the current Shanghai calendar date.  Calendar arithmetic is used
+    instead of a fixed number of days, and month-end dates are clamped (for example, May 31 minus
+    three months becomes February 29 in a leap year).  ``as_of`` keeps the default reproducible in
+    tests and in scheduled callers.
+    """
+
+    if isinstance(as_of, datetime):
+        end = as_of.date()
+    elif isinstance(as_of, date):
+        end = as_of
+    elif as_of is None:
+        end = datetime.now(_SHANGHAI_TZ).date()
+    else:
+        raise TypeError("as_of must be a date, datetime, or None")
+    if isinstance(months, bool) or not isinstance(months, int) or months < 1:
+        raise ValueError("months must be a positive integer")
+
+    month_index = end.year * 12 + (end.month - 1) - months
+    year, zero_based_month = divmod(month_index, 12)
+    month = zero_based_month + 1
+    start = date(year, month, min(end.day, monthrange(year, month)[1]))
+    return start.strftime("%Y%m%d"), end.strftime("%Y%m%d")
+
+
+def resolve_date_window(
+    start_date: str | None = None,
+    end_date: str | None = None,
+    *,
+    as_of: date | datetime | None = None,
+) -> tuple[str, str]:
+    """Resolve optional CLI dates, defaulting to three calendar months ending at ``as_of``."""
+
+    if end_date is not None:
+        end = _parse_date(end_date)
+    elif isinstance(as_of, datetime):
+        end = as_of.date()
+    elif isinstance(as_of, date):
+        end = as_of
+    elif as_of is None:
+        end = datetime.now(_SHANGHAI_TZ).date()
+    else:
+        raise TypeError("as_of must be a date, datetime, or None")
+
+    default_start, default_end = recent_date_window(end)
+    resolved_start = start_date if start_date is not None else default_start
+    resolved_end = end_date if end_date is not None else default_end
+    if _parse_date(resolved_start) > _parse_date(resolved_end):
+        raise ValueError("start_date must not be later than end_date")
+    return resolved_start, resolved_end
 
 
 def _frame_from_market_result(result: MarketDataResult) -> pd.DataFrame:
@@ -133,18 +196,17 @@ def normalize_demo_frame(frame: pd.DataFrame, symbol: str = DEMO_SYMBOL) -> pd.D
 
 
 def fetch_demo_data_with_metadata(
-    start_date: str = DEFAULT_START_DATE,
-    end_date: str = DEFAULT_END_DATE,
+    start_date: str | None = None,
+    end_date: str | None = None,
     adjust: str = DEFAULT_ADJUST,
     *,
     provider: AkShareMarketProvider | None = None,
 ) -> VSAFetchBatch:
     """Fetch 生益电子 through the configured project provider and retain provenance."""
 
-    start = _parse_date(start_date)
-    end = _parse_date(end_date)
-    if start > end:
-        raise ValueError("start_date must not be later than end_date")
+    resolved_start, resolved_end = resolve_date_window(start_date, end_date)
+    start = _parse_date(resolved_start)
+    end = _parse_date(resolved_end)
     configured = provider or AkShareMarketProvider(CompatibilityConfig.from_env())
     query = MarketQuery(
         symbol=DEMO_SYMBOL,
@@ -164,8 +226,8 @@ def fetch_demo_data_with_metadata(
 
 
 def fetch_demo_data(
-    start_date: str = DEFAULT_START_DATE,
-    end_date: str = DEFAULT_END_DATE,
+    start_date: str | None = None,
+    end_date: str | None = None,
     adjust: str = DEFAULT_ADJUST,
     *,
     provider: AkShareMarketProvider | None = None,
@@ -477,8 +539,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default="remote",
         help="Data source (default: remote AkShare; fixture is offline synthetic data).",
     )
-    parser.add_argument("--start-date", default=DEFAULT_START_DATE, help="YYYYMMDD start date.")
-    parser.add_argument("--end-date", default=DEFAULT_END_DATE, help="YYYYMMDD end date.")
+    parser.add_argument(
+        "--start-date",
+        default=None,
+        help="YYYYMMDD start date (default: three calendar months before the end date).",
+    )
+    parser.add_argument(
+        "--end-date",
+        default=None,
+        help="YYYYMMDD end date (default: today in Asia/Shanghai).",
+    )
     parser.add_argument("--adjust", choices=("", "qfq", "hfq"), default=DEFAULT_ADJUST)
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
     parser.add_argument("--indicators", type=Path, default=DEFAULT_INDICATORS)
@@ -499,6 +569,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     if args.source == "fixture":
         raw = build_fixture()
+        requested_start_date = None
+        requested_end_date = None
         provenance = {
             "source": "deterministic synthetic fixture (offline test only)",
             "storage": "in-memory DataFrame",
@@ -507,7 +579,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             "retrieved_at_utc": None,
         }
     else:
-        batch = fetch_demo_data_with_metadata(args.start_date, args.end_date, args.adjust)
+        requested_start_date, requested_end_date = resolve_date_window(
+            args.start_date,
+            args.end_date,
+        )
+        batch = fetch_demo_data_with_metadata(
+            requested_start_date,
+            requested_end_date,
+            args.adjust,
+        )
         raw = batch.frame
         provenance = {
             "source": batch.source,
@@ -527,8 +607,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         storage=provenance["storage"],
         backend=provenance["backend"],
         cache_hit=provenance["cache_hit"],
-        start_date=args.start_date if args.source == "remote" else None,
-        end_date=args.end_date if args.source == "remote" else None,
+        start_date=requested_start_date,
+        end_date=requested_end_date,
         adjust=args.adjust if args.source == "remote" else None,
         retrieved_at_utc=provenance["retrieved_at_utc"],
         config=config,
@@ -561,6 +641,7 @@ __all__ = [
     "DEFAULT_ADJUST",
     "DEFAULT_END_DATE",
     "DEFAULT_INDICATORS",
+    "DEFAULT_LOOKBACK_MONTHS",
     "DEFAULT_REPORT",
     "DEFAULT_START_DATE",
     "DEMO_NAME",
@@ -574,6 +655,8 @@ __all__ = [
     "generate_vsa_frame",
     "normalize_demo_frame",
     "parse_args",
+    "recent_date_window",
+    "resolve_date_window",
     "run_backtest",
     "write_report",
 ]

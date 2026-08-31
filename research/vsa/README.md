@@ -28,9 +28,14 @@ checks:
   --features reports/vsa_688183_features.csv
 ```
 
-For a remote run, use a fixed historical window and the provider's normal configuration:
+For a remote run without date arguments, the CLI uses the current Shanghai date and the preceding
+three calendar months (same day-of-month when possible).  The resolved dates are written to the
+report.  Use explicit dates when reproducing an older run:
 
 ```bash
+.venv/bin/python -m research.vsa.run \
+  --adjust qfq
+
 .venv/bin/python -m research.vsa.run \
   --start-date 20240101 --end-date 20241231 --adjust qfq
 ```

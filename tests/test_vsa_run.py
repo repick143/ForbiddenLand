@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -18,6 +18,8 @@ from research.vsa.run import (
     fetch_demo_data_with_metadata,
     generate_vsa_frame,
     normalize_demo_frame,
+    recent_date_window,
+    resolve_date_window,
     run_backtest,
     write_report,
 )
@@ -144,6 +146,21 @@ def test_run_backtest_reports_missing_vsa_columns() -> None:
                 }
             )
         )
+
+
+def test_recent_date_window_uses_calendar_months_and_month_end_clamping() -> None:
+    assert recent_date_window(date(2026, 8, 31)) == ("20260531", "20260831")
+    assert recent_date_window(date(2024, 5, 31)) == ("20240229", "20240531")
+
+
+def test_resolve_date_window_supports_partial_overrides() -> None:
+    assert resolve_date_window(end_date="20260831") == ("20260531", "20260831")
+    assert resolve_date_window("20260701", as_of=date(2026, 8, 31)) == (
+        "20260701",
+        "20260831",
+    )
+    with pytest.raises(ValueError, match="start_date must not be later"):
+        resolve_date_window("20260901", "20260831")
 
 
 def test_remote_demo_path_uses_provider_and_preserves_provenance() -> None:
