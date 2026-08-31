@@ -19,9 +19,15 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_HISTORY_ROOT = PROJECT_ROOT / "analysis_history"
 DEFAULT_ADJUST = "qfq"
 DEFAULT_LOOKBACK_DAYS = 420
+DEFAULT_SYMBOLS: tuple[str, ...] = ("688183", "600183")
 STOCK_CATALOG: dict[str, str] = {
     "688183": "生益电子",
     "600183": "生益科技",
+    "688362": "甬矽电子",
+    "002428": "云南锗业",
+    "300139": "晓程科技",
+    "603228": "景旺电子",
+    "301717": "超纯应材",
 }
 
 
@@ -177,7 +183,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         end_date = parse_iso_date(args.end_date) if args.end_date else analysis_date
         if start_date > end_date:
             raise ValueError("start-date must not be later than end-date")
-        symbols = args.symbols or list(STOCK_CATALOG)
+        symbols = args.symbols or list(DEFAULT_SYMBOLS)
         history_root = args.history_root
         if not history_root.is_absolute():
             history_root = PROJECT_ROOT / history_root
@@ -216,6 +222,7 @@ __all__ = [
     "DEFAULT_ADJUST",
     "DEFAULT_HISTORY_ROOT",
     "DEFAULT_LOOKBACK_DAYS",
+    "DEFAULT_SYMBOLS",
     "STOCK_CATALOG",
     "build_fixture",
     "generate_record",

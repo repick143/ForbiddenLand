@@ -1,0 +1,173 @@
+{
+  "schema_version": 1,
+  "analysis_version": "technical-analysis-v1",
+  "analysis_id": "002428/2026-08-31",
+  "analysis_date": "2026-08-31",
+  "as_of_date": "2026-08-31",
+  "asset": {
+    "asset_type": "stock",
+    "code": "002428",
+    "name": "云南锗业"
+  },
+  "headline": "云南锗业：结构未完成，等待量价确认",
+  "stance": "neutral",
+  "summary": "截至 2026-08-31，日线收盘 100.70，日线趋势 uptrend、周线趋势 uptrend；20日涨跌幅 47.33%、RSI14 50.44、量比 0.614。形态只作为概率假设，需用后续收盘和成交量确认。",
+  "latest_close": 100.7,
+  "indicators": {
+    "daily": {
+      "latest_close": 100.7,
+      "return_5d_pct": 5.59,
+      "return_20d_pct": 47.33,
+      "sma20": 98.574,
+      "sma50": 95.2488,
+      "sma200": 61.9177,
+      "sma20_slope_5d": 7.71,
+      "rsi14": 50.44,
+      "atr14": 7.1679,
+      "atr14_pct": 7.12,
+      "volume_latest": 50788700.0,
+      "volume_average20": 81506355.0,
+      "volume_ratio20": 0.614,
+      "relative_position60_pct": 55.36,
+      "drawdown_from_window_high_pct": -22.59,
+      "volume_observations": 282
+    },
+    "weekly": {
+      "latest_close": 100.7,
+      "return_4w_pct": 0.62,
+      "return_12w_pct": 9.16,
+      "sma10": 92.832,
+      "sma20": 91.4355,
+      "sma40": 65.5242,
+      "sma20_slope_4w": 9.0505,
+      "rsi14": 53.46,
+      "atr14": 19.125,
+      "relative_position20_pct": 55.36,
+      "bar_count": 60
+    }
+  },
+  "structure": {
+    "trend": {
+      "daily": "uptrend",
+      "weekly": "uptrend"
+    },
+    "support": {
+      "lower": 60.8,
+      "upper": 64.3839
+    },
+    "resistance": {
+      "lower": 109.416,
+      "upper": 113.0
+    },
+    "breakout": {
+      "direction": "none",
+      "status": "none",
+      "prior_high": 113.0,
+      "prior_low": 67.69,
+      "volume_ratio": 0.614
+    },
+    "weekly_context": {
+      "sma_alignment": "uptrend",
+      "relative_position20_pct": 55.36
+    }
+  },
+  "patterns": [
+    {
+      "name": "多周期趋势",
+      "timeframe": "weekly+daily",
+      "status": "aligned",
+      "evidence": "周线=uptrend，日线=uptrend；周线收盘 100.70，日线收盘 100.70。",
+      "volume_confirmation": "not_applicable",
+      "confidence": "medium"
+    },
+    {
+      "name": "市场结构",
+      "timeframe": "daily",
+      "status": "range_or_transition",
+      "evidence": "收盘仍在前20日区间内；相对60日区间位置 55.36%。",
+      "volume_confirmation": "not_triggered",
+      "confidence": "low"
+    },
+    {
+      "name": "RSI 动能",
+      "timeframe": "daily",
+      "status": "neutral",
+      "evidence": "14日 RSI=50.44；RSI 是滞后动量指标，不能单独作为入场依据。",
+      "volume_confirmation": "not_applicable",
+      "confidence": "medium"
+    }
+  ],
+  "setup": {
+    "direction": "long_conditional_observation",
+    "status": "wait_for_volume_breakout",
+    "trigger_price": 113.0,
+    "entry_price": null,
+    "stop_loss": 89.9481,
+    "target_price": 159.1037,
+    "risk_reward": 2.0,
+    "invalidation": "日线收盘跌破止损位 89.95，或突破后重新收回前20日区间；盘中瞬时触及不单独视为确认。",
+    "risk_note": "条件观察位仅用于复盘，不是成交指令；日线数据不能确认盘中触发顺序。"
+  },
+  "review": {
+    "status": "no_prior_analysis",
+    "previous_analysis_date": null,
+    "previous_stance": null,
+    "period_start": null,
+    "period_end": null,
+    "outcome": "not_applicable",
+    "thesis_status": "not_available",
+    "checks": [],
+    "summary": "这是该标的的首份分析记录，暂无更早记录可复盘。"
+  },
+  "provenance": {
+    "source": "AkShare remote provider (Tencent historical fallback)",
+    "backend": "remote",
+    "storage": "remote response (Tencent historical fallback)",
+    "start_date": "2025-07-07",
+    "end_date": "2026-08-31",
+    "adjust": "qfq",
+    "retrieved_at_utc": "2026-08-31T09:31:32.300624+00:00",
+    "cache_hit": false,
+    "frequency": "daily",
+    "bar_count": 282
+  },
+  "validation": {
+    "sample_size_bars": 282,
+    "backtest_trade_count": 0,
+    "minimum_reference_trades": 30,
+    "sample_sufficient": false,
+    "out_of_sample": false,
+    "backtest_available": false,
+    "warnings": [
+      "技术指标是描述性观察，尚未在该标的上完成含交易成本的回测。",
+      "日线数据无法确认盘中触发顺序，突破必须等待收盘和成交量确认。",
+      "样本数量不能替代至少 30 笔交易的统计验证，当前记录不代表存在可交易优势。",
+      "研究输出仅供复盘，不构成投资建议。"
+    ]
+  },
+  "parameters": {
+    "daily_sma_periods": [
+      20,
+      50,
+      200
+    ],
+    "weekly_sma_periods": [
+      10,
+      20,
+      40
+    ],
+    "rsi_period": 14,
+    "atr_period": 14,
+    "volume_window": 20,
+    "structure_window": 20,
+    "range_window": 60,
+    "breakout_volume_ratio": 1.2,
+    "risk_multiple": 1.5,
+    "reward_multiple": 2.0
+  },
+  "notes": [
+    "数据窗口和来源写入 provenance；远端备用端点或缓存命中不会被隐藏。",
+    "均线、RSI、ATR 等指标存在滞后，不能单独预测未来价格。"
+  ],
+  "created_at_utc": "2026-08-31T09:31:32.303496+00:00"
+}

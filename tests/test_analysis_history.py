@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from forbiddenland.api.app import create_app
 from forbiddenland.application.analysis_history_service import AnalysisHistoryService
 from forbiddenland.infrastructure.analysis_history import AnalysisHistoryRepository
-from research.technical_analysis.run import generate_record
+from research.technical_analysis.run import STOCK_CATALOG, generate_record
 
 
 def _write_record(root: Path, symbol: str, analysis_date: date) -> None:
@@ -36,6 +36,34 @@ def test_history_is_partitioned_by_stock_and_analysis_date(tmp_path: Path) -> No
     assert result.records[0].asset.code == "688183"
     assert result.records[0].analysis_date == date(2026, 8, 31)
     assert result.warnings == ()
+
+
+@pytest.mark.parametrize(
+    ("symbol", "name"),
+    (
+        ("688362", "甬矽电子"),
+        ("002428", "云南锗业"),
+        ("300139", "晓程科技"),
+        ("603228", "景旺电子"),
+        ("301717", "超纯应材"),
+    ),
+)
+def test_extended_analysis_catalog_resolves_requested_stocks(
+    tmp_path: Path, symbol: str, name: str
+) -> None:
+    assert STOCK_CATALOG[symbol] == name
+
+    _, record = generate_record(
+        symbol,
+        analysis_date=date(2026, 8, 31),
+        start_date=date(2026, 1, 1),
+        end_date=date(2026, 8, 31),
+        history_root=tmp_path,
+        source="fixture",
+    )
+
+    assert record.asset.code == symbol
+    assert record.asset.name == name
 
 
 def test_new_record_contains_review_of_the_previous_same_stock_record(tmp_path: Path) -> None:
