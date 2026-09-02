@@ -40,7 +40,7 @@ the import is `easy_tdx`; it requires `pandas>=2,<3`.
 | Intraday bars | `kline SH 600183 --period 5MIN --count 240` | `1MIN`, `5MIN`, `15MIN`, `30MIN`, `60MIN` |
 | Adjusted bars | `kline SH 600183 --adjust QFQ` | `NONE`, `QFQ`, or `HFQ` |
 | Right-end timestamps | `kline ... --bar-time end` | Only minute bars; default is `start` |
-| Today's/history chart | `tick SH 600183 --days 5` | This is minute time-and-sales chart data |
+| Today's/history chart | `tick SH 600183 --days 5` | Aggregated intraday chart data; not individual transactions |
 | Transactions | `transaction SH 600183 --count 2000` | Protocol time precision and aggregation are limited |
 | Auction | `auction SH 600183` | Collection-auction fields may be absent outside session |
 | Capital flow | `capital-flow SH 600183` | Read the documented classification caveat |

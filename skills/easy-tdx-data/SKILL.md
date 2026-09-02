@@ -83,9 +83,15 @@ for mod in duckdb scipy fastapi uvicorn; do
     echo "${mod}_MISSING"
   fi
 done
-local_data="$(find "$root" -type f \( -name '*.day' -o -name '*.duckdb' \) -print -quit 2>/dev/null)"
-if [ -n "$local_data" ]; then
-  echo "LOCAL_TDX_DATA=$local_data"
+day_file="$(find "$root" -type f -name '*.day' -print -quit 2>/dev/null)"
+warehouse_file="$(find "$root" -type f -name 'warehouse.duckdb' -print -quit 2>/dev/null)"
+if [ -z "$warehouse_file" ] && [ -f "$HOME/.easy_tdx/warehouse.duckdb" ]; then
+  warehouse_file="$HOME/.easy_tdx/warehouse.duckdb"
+fi
+if [ -n "$day_file" ]; then
+  echo "LOCAL_TDX_DAY=$day_file"
+elif [ -n "$warehouse_file" ]; then
+  echo "LOCAL_TDX_WAREHOUSE=$warehouse_file"
 else
   echo "LOCAL_TDX_DATA_NOT_FOUND"
 fi
@@ -105,8 +111,9 @@ timeout or use an explicit host (`EASY_TDX_MAC_HOST` for MAC routes,
    code runtime must be checked separately.
 4. Neither runtime is available: stop and give the project-local install command. Do not install
    into a global interpreter without an explicit request.
-5. The user explicitly asks for offline data: use `.day`/DuckDB only after confirming the path,
-   source date, and whether current-day provisional bars are allowed.
+5. The user explicitly asks for offline data: use a TDX `.day` file or the easy-tdx
+   `warehouse.duckdb` only after confirming the path, source date, and whether current-day
+   provisional bars are allowed.
 
 **Step 1 exit gate:** select exactly one usable path (project binary, global binary, same-runtime
 module/API, or an explicit offline path). If none is usable, stop with the installation or data-path
