@@ -63,7 +63,7 @@ the file dates before using it.
 Install the optional warehouse dependency in a fresh environment:
 
 ```bash
-python -m pip install "easy-tdx[warehouse]"
+python -m pip install "easy-tdx[warehouse]==1.28.1"
 ```
 
 Typical commands:
@@ -91,7 +91,7 @@ source is unavailable.
 The optional Web extra provides FastAPI/Uvicorn:
 
 ```bash
-python -m pip install "easy-tdx[web]"
+python -m pip install "easy-tdx[web]==1.28.1"
 easy-tdx serve --host 127.0.0.1 --port 8000 --no-open-browser
 ```
 
