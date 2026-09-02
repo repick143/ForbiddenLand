@@ -14,18 +14,25 @@ python scripts/bootstrap.py --profile data
 .venv/bin/python -m pip check
 ```
 
-To make the skill available to Codex, link the checked-out directory into the user skill home
-(`$CODEX_HOME` defaults to `~/.codex`). Restart Codex after creating the link:
+To make the skill available to Codex, run the repository installer from the project root. It links
+the checked-out directory into the user skill home (`$CODEX_HOME` defaults to `~/.codex`) and
+refuses to overwrite an existing destination:
 
 ```bash
-skill_home="${CODEX_HOME:-$HOME/.codex}/skills"
-mkdir -p "$skill_home"
-ln -s "$PWD/skills/easy-tdx-data" "$skill_home/easy-tdx-data"
+python scripts/install_local_skills.py
 ```
 
-If the host loads user skills from `~/.agents/skills` instead, use that directory as
-`skill_home`, for example `skill_home="$HOME/.agents/skills"`. A pre-existing destination should
-be handled explicitly rather than overwritten.
+The link keeps the repository source canonical: edits to `SKILL.md` and `references/` are visible
+locally immediately, so a copy/reinstall is not needed after each skill update. Re-run the command
+after moving the repository or repairing a link. If the host loads user skills from
+`~/.agents/skills` instead, pass that directory explicitly:
+
+```bash
+python scripts/install_local_skills.py --skill-home "$HOME/.agents/skills"
+```
+
+Restart Codex (or open a new session) after creating the link so the skill enters the session's
+skill inventory.
 
 The distribution is `easy-tdx`; the import name is `easy_tdx`. Install optional extras only for the
 capability you need:

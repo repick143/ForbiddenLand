@@ -202,9 +202,13 @@ DuckDB，也不会进入 Git。图表使用 `lightweight-charts`，页面保留 
   `.venv/bin/python -m pip install "easy-tdx==1.28.1"` 和 `.venv/bin/python -m pip check`。
   `easy-tdx` 是发行包名，`easy_tdx` 是导入名；包要求 `pandas>=2,<3`。Web、DuckDB 仓库、
   Spearman IC 分别按需安装 `easy-tdx[web]`、`easy-tdx[warehouse]`、`easy-tdx[science]`。
-- 加载 skill：将仓库中的 `skills/easy-tdx-data` 链接到
-  `${CODEX_HOME:-$HOME/.codex}/skills/easy-tdx-data`（某些 agent 宿主使用
-  `$HOME/.agents/skills`），重启 Codex 后生效；完整命令见该目录的 `README.md`。
+- 加载 skill：在仓库根目录执行 `python scripts/install_local_skills.py`，脚本会把
+  `skills/easy-tdx-data` 链接到 `${CODEX_HOME:-$HOME/.codex}/skills/easy-tdx-data`，并拒绝覆盖
+  已存在的同名路径。链接指向仓库源目录，因此后续修改 `SKILL.md` 或 `references/` 会自动
+  反映到本地安装，不需要重复复制；切换仓库位置或修复链接时可重复执行脚本。某些 agent
+  宿主使用 `$HOME/.agents/skills`，可显式指定 `--skill-home "$HOME/.agents/skills"`。
+  创建链接后需重启 Codex（或新开 session）才能进入 skill 清单；完整命令见该目录的
+  `README.md`。
 - 数据边界：TDX/MAC 是公开行情协议，实时层是轮询而非交易所推送；skill 必须记录来源、
   主机、抓取时间、频率、复权、时间戳和成交量单位，不得静默把 TDX 数据写入 AkShare 快照，
   也不得把 easy-tdx 自带回测引擎当作 AKQuant 的替代品。
