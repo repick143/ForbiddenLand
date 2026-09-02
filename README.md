@@ -192,6 +192,27 @@ DuckDB，也不会进入 Git。图表使用 `lightweight-charts`，页面保留 
   抓取时间、缓存命中和数据窗口。技术分析是研究输出，不代表含成本回测或投资建议；损坏
   的历史文件会在列表响应中作为 warning 暴露，而不是静默忽略。
 
+### easy-tdx 数据源 skill（已实现）
+
+- 入口：[`skills/easy-tdx-data/SKILL.md`](skills/easy-tdx-data/SKILL.md)。skill 优先解析仓库
+  `.venv/bin/easy-tdx` binary，按请求路由行情、分钟线、分时/逐笔、盘口、板块、公告、
+  技术指标、因子、缠论、通达信公式、筛选、回测、DuckDB 仓库和 Web 能力；缺少 binary 时
+  检查同一 Python runtime 并回退到该 runtime 的 `python -m easy_tdx`/Python API。
+- 安装：在仓库根目录执行 `python scripts/bootstrap.py --profile data`，然后执行
+  `.venv/bin/python -m pip install "easy-tdx==1.28.1"` 和 `.venv/bin/python -m pip check`。
+  `easy-tdx` 是发行包名，`easy_tdx` 是导入名；包要求 `pandas>=2,<3`。Web、DuckDB 仓库、
+  Spearman IC 分别按需安装 `easy-tdx[web]`、`easy-tdx[warehouse]`、`easy-tdx[science]`。
+- 加载 skill：将仓库中的 `skills/easy-tdx-data` 链接到
+  `${CODEX_HOME:-$HOME/.codex}/skills/easy-tdx-data`（某些 agent 宿主使用
+  `$HOME/.agents/skills`），重启 Codex 后生效；完整命令见该目录的 `README.md`。
+- 数据边界：TDX/MAC 是公开行情协议，实时层是轮询而非交易所推送；skill 必须记录来源、
+  主机、抓取时间、频率、复权、时间戳和成交量单位，不得静默把 TDX 数据写入 AkShare 快照，
+  也不得把 easy-tdx 自带回测引擎当作 AKQuant 的替代品。
+- VSA/研究：easy-tdx 提供分钟和逐笔输入、34 个指标、19 个因子及公式解析，但没有经验证
+  的 VSA 策略；价值因子当前为占位实现，因子窗口按输入行数计算。完整限制和故障处理见
+  `skills/easy-tdx-data/references/`。
+- 验证：当前 macOS/Python `3.12.10` 环境已通过项目测试；Ubuntu 仍是项目发布验证目标。
+
 后端提供 `/api/v1/health`、`/api/v1/market/securities`、`/api/v1/market/assets` 和
 `/api/v1/market/bars`。统一资产接口使用 `asset_type=stock|index|concept`；本地模式支持个股和
 已核验的同花顺概念行情，常见宽基指数目录可以搜索，但指数历史行情目前需要远端 AkShare。
