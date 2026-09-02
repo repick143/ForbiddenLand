@@ -1,0 +1,17 @@
+{
+  "bar_minutes": 5,
+  "transaction_alignment": "auto",
+  "volume_baseline_sessions": 30,
+  "min_history_sessions": 30,
+  "min_transaction_coverage": 0.9,
+  "entry_delta_ratio": 0.25,
+  "entry_delta_zscore": 1.0,
+  "entry_rvol": 1.4,
+  "entry_persistence": 2,
+  "use_vwap_filter": true,
+  "entry_vwap_distance": 0.001,
+  "stop_loss_pct": 0.03,
+  "take_profit_pct": 0.08,
+  "position_mode": "percent",
+  "position_fraction": 0.5
+}

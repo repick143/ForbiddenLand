@@ -26,6 +26,23 @@ def test_install_target_profiles() -> None:
     assert install_target("full") == ".[dev,data,web]"
 
 
+def test_data_profiles_verify_easy_tdx_import() -> None:
+    commands: list[list[str]] = []
+
+    def fake_run(command, *, cwd=bootstrap.PROJECT_ROOT):
+        del cwd
+        commands.append([str(part) for part in command])
+
+    original = bootstrap.run
+    try:
+        bootstrap.run = fake_run
+        bootstrap.verify_imports(Path(".venv/bin/python"), "data")
+    finally:
+        bootstrap.run = original
+
+    assert "easy_tdx" in commands[0][-1]
+
+
 def test_venv_python_uses_platform_layout() -> None:
     expected = Path(".venv") / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     assert venv_python(Path(".venv")) == expected

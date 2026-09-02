@@ -259,6 +259,33 @@ focused on durable engineering constraints. Add project-specific rules as the co
   use the Git log as the feature inventory, and do not record transient debugging details as a
   feature.
 
+### easy-tdx transaction order-flow proxy
+
+- Status: implemented as an independent research direction under `research/order_flow/`; the CLI
+  entry point is `python -m research.order_flow.run` and the default symbol is `SH:688183`.
+- Boundary: `EasyTdxCollector` owns MAC quote, auction, K-line, and paginated `transaction` input;
+  normalization, aggregation, causal features, and the pandas backtest wrapper remain separate
+  modules. The strategy does not call a provider during simulation and does not depend on AKQuant.
+- Timestamp contract: `OrderFlowConfig.transaction_alignment` accepts `auto`, `floor`, and `ceil`.
+  `auto` detects the returned session boundary and the resolved value is persisted in feature and
+  report provenance. The currently validated MAC minute response is right-endpoint labelled, while
+  the deterministic fixture is left-endpoint labelled; exact right-endpoint boundaries are mapped
+  to the following bar, with the `11:30` morning terminal bar retained and the `15:00` closing
+  auction excluded from continuous-session signals.
+- Data limits: `bs_flag` is an aggressor-side direction proxy from aggregated prints, not order IDs,
+  account identity, or complete Level-2 events. Transaction units, page truncation, session
+  exclusions, K-line volume reconciliation, source host, retrieval time, adjustment mode, and a
+  provisional-current-session marker are retained in the report. Missing transaction bars stay
+  missing.
+- Verification: deterministic order-flow tests cover malformed/unknown flags, pagination,
+  coverage filters, CVD gaps, configurable intervals, timestamp alignment, and backtest keys; a
+  live MAC smoke run has verified quote/auction, 1-minute/5-minute bars, transaction pagination,
+  right-endpoint alignment, and volume reconciliation. Full project checks remain the release gate.
+- Known limitations: MAC polling can aggregate executions and may omit/lag records; `15:00`
+  closing-auction volume is not a continuous-session signal; an unflattened final position is
+  marked to market and called out in the report; single-symbol results require an independent
+  source and out-of-sample validation and are research output, not investment advice.
+
 ## Git Discipline
 
 - Inspect `git status` and the complete diff before committing.

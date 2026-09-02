@@ -13,6 +13,12 @@ without coupling unrelated studies.
   computes missing-aware causal features, separates candidates from next-bar confirmations, records
   AKQuant indicators, and reports explicit costs, T+1 execution, provenance, and validation limits.
   Its fixture is synthetic and the default remote path uses `AkShareMarketProvider`.
+- [`order_flow/`](order_flow/): an independent easy-tdx transaction-direction order-flow proxy
+  for 生益电子 (`SH:688183` by default). It audits paginated MAC transactions, verifies lot/share
+  volume against daily and minute K-lines, computes causal Delta/CVD/RVOL/VWAP/absorption features,
+  exposes configurable signal, timestamp-alignment, and execution parameters, and runs the easy-tdx
+  backtest simulator. Its `auto` alignment records whether the observed endpoint is left- or
+  right-labelled. It does not claim complete Level-2 order events or institutional identity.
 - [`technical_analysis/`](technical_analysis/): a reproducible multi-timeframe technical-analysis
   generator for 生益电子 (`688183`), 生益科技 (`600183`), 甬矽电子 (`688362`), 云南锗业 (`002428`),
   晓程科技 (`300139`), 行云科技 (`300209`), 景旺电子 (`603228`) and 超纯应材 (`301717`). It

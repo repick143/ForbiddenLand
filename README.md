@@ -40,7 +40,7 @@ python --version
 python scripts/bootstrap.py
 ```
 
-脚本会创建 `.venv`、安装项目及 `akquant`、`akshare`、DuckDB、Parquet、测试和格式化依赖，
+脚本会创建 `.venv`、安装项目及 `akquant`、`akshare`、`easy-tdx`、DuckDB、Parquet、测试和格式化依赖，
 并在 `full` profile 下进入 `frontend/` 使用锁文件执行 `npm ci`。初始化还会创建数据目录并执行导入、
 编译、测试和 lint 基础检查。脚本必须由 Python 3.12.x 运行；如果当前解释器版本不符，会给出
 切换解释器的提示，不会删除已有虚拟环境。
@@ -215,6 +215,11 @@ DuckDB，也不会进入 Git。图表使用 `lightweight-charts`，页面保留 
 - VSA/研究：easy-tdx 提供分钟和逐笔输入、34 个指标、19 个因子及公式解析，但没有经验证
   的 VSA 策略；价值因子当前为占位实现，因子窗口按输入行数计算。完整限制和故障处理见
   `skills/easy-tdx-data/references/`。
+- 订单流研究：`research/order_flow/` 使用 easy-tdx MAC `transaction` 的成交方向代理，
+  配合 5 分钟/1 分钟/日线交叉对账、分页审计和可调参数运行独立回测；它不接入 AKQuant，
+  也不把聚合成交记录当作完整 Level-2 委托事件。`transaction_alignment=auto` 会记录并保留
+  实际采用的左/右端点映射；当前已验证 MAC 主机的分钟 K 线按右端点标记，合成 fixture 按左
+  端点标记。报告同时保留 easy-tdx 原始指标和按交易日修正的分钟回测统计。
 - 验证：当前 macOS/Python `3.12.10` 环境已通过项目测试；Ubuntu 仍是项目发布验证目标。
 
 后端提供 `/api/v1/health`、`/api/v1/market/securities`、`/api/v1/market/assets` 和

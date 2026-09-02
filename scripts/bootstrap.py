@@ -225,7 +225,7 @@ def create_data_directories() -> None:
 def verify_imports(python: Path, profile: str) -> None:
     modules = ["forbiddenland", "akquant"]
     if profile in {"data", "web", "full"}:
-        modules.extend(["akshare", "duckdb", "pyarrow"])
+        modules.extend(["akshare", "duckdb", "easy_tdx", "pyarrow"])
     if profile in {"web", "full"}:
         modules.extend(["fastapi", "uvicorn"])
     module_literal = repr(modules)
