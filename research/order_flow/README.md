@@ -158,6 +158,48 @@ The collector controls are also adjustable from the CLI: `transaction-days`, `tr
 `--no-fetch-quote`/`--no-fetch-auction`.  These change data coverage and network cost, not the
 signal definition.
 
+## easy-tdx custom factor
+
+`easy-tdx==1.28.1` exposes custom factors through the `Factor`/`register_factor` protocol.  The
+project registers `order_flow_delta_ratio` when `research.order_flow.easy_tdx_factor` is imported:
+
+```python
+from easy_tdx.factor import FactorEngine
+from research.order_flow.easy_tdx_factor import EASY_TDX_FACTOR_NAME
+
+# Importing the module registers the class in easy_tdx's process-local registry.
+engine = FactorEngine()
+factor_frame = engine.compute_single(order_flow_features, [EASY_TDX_FACTOR_NAME])
+```
+
+The factor is deliberately the direct, bounded Delta ratio:
+
+```text
+(buy_volume - sell_volume) / total_transaction_volume
+```
+
+It has no hidden scoring weights.  Missing transaction rows and rows rejected by
+`of_data_valid` remain `NaN`, and the input frequency is supplied by the caller.  The definition
+is also kept in [`order_flow_factor.json`](order_flow_factor.json).
+
+The registry is process-local; easy-tdx 1.28.1 has no factor database or automatic project-module
+discovery.  The runner therefore writes both a factor table and a manifest:
+
+```bash
+.venv/bin/python -m research.order_flow.run \
+  --source live \
+  --factor-frequency daily \
+  --factor-output reports/order_flow_688183_factor.parquet \
+  --factor-manifest reports/order_flow_688183_factor.manifest.json
+```
+
+Daily output has one row per `date`/`code` and columns `date`, `code`, `symbol`, `datetime`, and
+`order_flow_delta_ratio`, matching the long-format inputs expected by `FactorAnalyzer`.  Use
+`--factor-frequency bar` to retain every 5-minute timestamp for intraday inspection; that output
+must be explicitly aggregated by session before daily cross-sectional IC or quantile analysis.
+The manifest records the actual file format/path, factor contract, source host, retrieval time,
+period, timestamp convention, volume units, and missing-value count.
+
 ## Interpretation and limitations
 
 Positive Delta with a positive bar response is consistent with active demand.  Large positive Delta

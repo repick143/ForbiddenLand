@@ -17,7 +17,9 @@ without coupling unrelated studies.
   for 生益电子 (`SH:688183` by default). It audits paginated MAC transactions, verifies lot/share
   volume against daily and minute K-lines, computes causal Delta/CVD/RVOL/VWAP/absorption features,
   exposes configurable signal, timestamp-alignment, and execution parameters, and runs the easy-tdx
-  backtest simulator. Its `auto` alignment records whether the observed endpoint is left- or
+  backtest simulator. It also registers and saves the `order_flow_delta_ratio` custom factor using
+  easy-tdx's `Factor` protocol; daily exports use the `date`/`code` long format expected by
+  `FactorAnalyzer`. Its `auto` alignment records whether the observed endpoint is left- or
   right-labelled. It does not claim complete Level-2 order events or institutional identity.
 - [`technical_analysis/`](technical_analysis/): a reproducible multi-timeframe technical-analysis
   generator for 生益电子 (`688183`), 生益科技 (`600183`), 甬矽电子 (`688362`), 云南锗业 (`002428`),

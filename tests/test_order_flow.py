@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import date, time
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -14,6 +15,15 @@ from research.order_flow.aggregate import (
 from research.order_flow.backtest import prepare_backtest_frame, run_order_flow_backtest
 from research.order_flow.collector import EasyTdxCollector
 from research.order_flow.config import OrderFlowConfig
+from research.order_flow.easy_tdx_factor import (
+    EASY_TDX_FACTOR_NAME,
+    EASY_TDX_FACTOR_VERSION,
+    OrderFlowDeltaRatio,
+    build_easy_tdx_factor_frame,
+    ensure_order_flow_factor_registered,
+    factor_definition,
+    save_easy_tdx_factor_bundle,
+)
 from research.order_flow.features import compute_order_flow_features
 from research.order_flow.normalize import (
     classify_session,
@@ -21,7 +31,13 @@ from research.order_flow.normalize import (
     normalize_transaction_frame,
     parse_symbol,
 )
-from research.order_flow.run import _config_from_args, _fixture_data, _parser, build_feature_frame
+from research.order_flow.run import (
+    _config_from_args,
+    _fixture_data,
+    _parser,
+    build_feature_frame,
+    run,
+)
 
 
 def _bars(days: int = 24) -> pd.DataFrame:
@@ -443,3 +459,137 @@ def test_fixture_supports_configured_bar_interval() -> None:
     assert provenance["period"] == "15MIN"
     assert bars["timestamp"].dt.minute.isin({0, 15, 30, 45}).all()
     assert not transactions.empty
+
+
+def test_order_flow_factor_uses_easy_tdx_registry_and_preserves_missing_rows() -> None:
+    registered = ensure_order_flow_factor_registered()
+    assert registered is OrderFlowDeltaRatio
+    definition = factor_definition()
+    assert definition["protocol"] == "easy_tdx.factor"
+    assert definition["name"] == EASY_TDX_FACTOR_NAME
+    assert definition["version"] == EASY_TDX_FACTOR_VERSION
+
+    frame = pd.DataFrame(
+        {
+            "buy_volume": [60.0, 0.0, 10.0],
+            "sell_volume": [40.0, 100.0, 10.0],
+            "total_transaction_volume": [100.0, 100.0, 0.0],
+            "of_data_valid": [True, False, True],
+        }
+    )
+    result = OrderFlowDeltaRatio().compute(frame)
+    assert result.iloc[0] == pytest.approx(0.2)
+    assert pd.isna(result.iloc[1])
+    assert pd.isna(result.iloc[2])
+
+
+def test_order_flow_factor_rejects_missing_or_negative_inputs() -> None:
+    with pytest.raises(ValueError, match="missing columns"):
+        OrderFlowDeltaRatio().compute(
+            pd.DataFrame(
+                {
+                    "buy_volume": [1.0],
+                    "sell_volume": [1.0],
+                }
+            )
+        )
+    with pytest.raises(ValueError, match="negative buy_volume"):
+        OrderFlowDeltaRatio().compute(
+            pd.DataFrame(
+                {
+                    "buy_volume": [-1.0],
+                    "sell_volume": [1.0],
+                    "total_transaction_volume": [2.0],
+                }
+            )
+        )
+
+
+def test_factor_engine_and_export_follow_easy_tdx_long_format(tmp_path) -> None:
+    from easy_tdx.factor import FactorEngine
+
+    bars, transactions, _ = _fixture_data("SH:688183", days=3)
+    features = build_feature_frame(
+        bars,
+        transactions,
+        symbol="SH:688183",
+        config=OrderFlowConfig(volume_baseline_sessions=2, min_history_sessions=2),
+    )
+    computed = FactorEngine().compute_single(features, [EASY_TDX_FACTOR_NAME])
+    pd.testing.assert_series_equal(
+        computed[EASY_TDX_FACTOR_NAME],
+        features[EASY_TDX_FACTOR_NAME],
+        check_names=True,
+    )
+
+    daily = build_easy_tdx_factor_frame(features, frequency="daily")
+    assert daily["date"].dtype.kind in "iu"
+    assert daily["code"].tolist() == ["688183"] * 3
+    assert daily.duplicated(["date", "code"]).sum() == 0
+    assert list(daily.columns) == [
+        "date",
+        "code",
+        "symbol",
+        "datetime",
+        EASY_TDX_FACTOR_NAME,
+    ]
+
+    bar = build_easy_tdx_factor_frame(features, frequency="bar")
+    assert len(bar) == len(features)
+    assert bar["datetime"].is_unique
+    assert bar[EASY_TDX_FACTOR_NAME].equals(features[EASY_TDX_FACTOR_NAME])
+
+    bundle = save_easy_tdx_factor_bundle(
+        daily,
+        tmp_path / "order_flow_factor.parquet",
+        provenance={
+            "source": "fixture",
+            "period": "5MIN",
+            "adjustment": "NONE",
+            "volume_unit": "shares",
+        },
+        frequency="daily",
+    )
+    assert bundle.data_path.exists()
+    assert bundle.manifest_path.exists()
+    manifest = json.loads(bundle.manifest_path.read_text(encoding="utf-8"))
+    assert manifest["protocol"] == "easy_tdx.factor"
+    assert manifest["factor"]["name"] == EASY_TDX_FACTOR_NAME
+    assert manifest["data"]["path"] == str(bundle.data_path)
+    assert manifest["data"]["rows"] == 3
+    assert manifest["provenance"]["period"] == "5MIN"
+
+
+def test_factor_definition_file_matches_registered_contract() -> None:
+    definition_path = Path(__file__).parents[1] / "research/order_flow/order_flow_factor.json"
+    payload = json.loads(definition_path.read_text(encoding="utf-8"))
+    runtime = factor_definition()
+    assert payload["protocol"] == runtime["protocol"]
+    assert payload["factor"]["name"] == runtime["name"]
+    assert payload["factor"]["version"] == runtime["version"]
+    assert payload["factor"]["inputs"] == runtime["inputs"]
+    assert payload["factor"]["formula"] == runtime["formula"]
+
+
+def test_fixture_runner_reports_persisted_factor_paths(tmp_path) -> None:
+    args = _parser().parse_args(
+        [
+            "--source",
+            "fixture",
+            "--report",
+            str(tmp_path / "report.json"),
+            "--features",
+            str(tmp_path / "features.csv"),
+            "--transactions",
+            str(tmp_path / "transactions.parquet"),
+            "--factor-output",
+            str(tmp_path / "factor.parquet"),
+            "--factor-manifest",
+            str(tmp_path / "factor.manifest.json"),
+        ]
+    )
+    report = run(args)
+    assert report["factor"]["name"] == EASY_TDX_FACTOR_NAME
+    assert report["factor"]["frequency"] == "daily"
+    assert Path(report["factor"]["output"]).exists()
+    assert Path(report["factor"]["manifest"]).exists()

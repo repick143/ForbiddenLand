@@ -1,0 +1,36 @@
+{
+  "protocol": "easy_tdx.factor",
+  "registration": "import research.order_flow.easy_tdx_factor",
+  "factor": {
+    "name": "order_flow_delta_ratio",
+    "version": "order-flow-delta-ratio-1",
+    "category": "order_flow",
+    "description": "主动买卖成交量差占比（Delta / transaction volume）",
+    "inputs": [
+      "buy_volume",
+      "sell_volume",
+      "total_transaction_volume"
+    ],
+    "formula": "(buy_volume - sell_volume) / total_transaction_volume",
+    "range": [-1.0, 1.0],
+    "missing_policy": "missing transaction or invalid quality rows remain NaN"
+  },
+  "output_contract": {
+    "daily": [
+      "date",
+      "code",
+      "symbol",
+      "datetime",
+      "order_flow_delta_ratio"
+    ],
+    "bar": [
+      "date",
+      "code",
+      "symbol",
+      "datetime",
+      "order_flow_delta_ratio"
+    ],
+    "date": "YYYYMMDD integer",
+    "code": "six-digit string"
+  }
+}

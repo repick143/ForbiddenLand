@@ -263,6 +263,12 @@ focused on durable engineering constraints. Add project-specific rules as the co
 
 - Status: implemented as an independent research direction under `research/order_flow/`; the CLI
   entry point is `python -m research.order_flow.run` and the default symbol is `SH:688183`.
+- Factor boundary: importing `research.order_flow.easy_tdx_factor` registers the direct
+  `order_flow_delta_ratio` factor through easy-tdx's `Factor`/`register_factor` contract. The
+  registry is process-local in easy-tdx 1.28.1; persisted values use the `date`, `code`, and factor
+  column long format, with a JSON manifest carrying the factor definition and provenance. Daily
+  exports are suitable for `FactorAnalyzer`; intraday bar exports require explicit session
+  aggregation before daily cross-sectional analysis.
 - Boundary: `EasyTdxCollector` owns MAC quote, auction, K-line, and paginated `transaction` input;
   normalization, aggregation, causal features, and the pandas backtest wrapper remain separate
   modules. The strategy does not call a provider during simulation and does not depend on AKQuant.

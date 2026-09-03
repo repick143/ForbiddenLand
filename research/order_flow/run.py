@@ -24,6 +24,8 @@ DEFAULT_SYMBOL = "SH:688183"
 DEFAULT_REPORT = PROJECT_ROOT / "reports" / "order_flow_688183.json"
 DEFAULT_FEATURES = PROJECT_ROOT / "reports" / "order_flow_688183_features.csv"
 DEFAULT_TRANSACTIONS = PROJECT_ROOT / "reports" / "order_flow_688183_transactions.parquet"
+DEFAULT_FACTOR = PROJECT_ROOT / "reports" / "order_flow_688183_factor.parquet"
+DEFAULT_FACTOR_MANIFEST = PROJECT_ROOT / "reports" / "order_flow_688183_factor.manifest.json"
 
 
 def _json_value(value: Any) -> Any:
@@ -71,6 +73,7 @@ def _events(frame: pd.DataFrame, limit: int = 100) -> list[dict[str, Any]]:
         "bullish_absorption",
         "bearish_absorption",
         "transaction_coverage",
+        "order_flow_delta_ratio",
     ]
     available = [column for column in columns if column in frame.columns]
     return [
@@ -240,6 +243,12 @@ def build_feature_frame(
         transaction_alignment=settings.transaction_alignment,
     )
     features = compute_order_flow_features(aggregated, settings)
+    # Register and compute the custom factor through easy-tdx's public FactorEngine contract.  Keep
+    # the import local so normalization-only callers do not need to import the optional factor API.
+    from .easy_tdx_factor import EASY_TDX_FACTOR_NAME, compute_order_flow_factor
+
+    features[EASY_TDX_FACTOR_NAME] = compute_order_flow_factor(features)
+    features.attrs["easy_tdx_factor_name"] = EASY_TDX_FACTOR_NAME
     features.attrs.update(aggregated.attrs)
     return features
 
@@ -252,6 +261,7 @@ def build_report(
     config: OrderFlowConfig,
     provenance: dict[str, Any],
     quality: dict[str, Any] | None = None,
+    factor: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Create a reproducible report without embedding the large source frames."""
 
@@ -286,7 +296,7 @@ def build_report(
         warnings.append(
             f"backtest ends with {open_position:g} shares open; end value includes mark-to-market PnL"
         )
-    return {
+    report = {
         "schema_version": 1,
         "order_flow_version": ORDER_FLOW_VERSION,
         "engine": "easy_tdx.backtest.BacktestEngine",
@@ -332,6 +342,9 @@ def build_report(
             "sample_sufficient_for_reference": trade_count >= 30,
         },
     }
+    if factor is not None:
+        report["factor"] = factor
+    return report
 
 
 def write_report(report: dict[str, Any], path: str | Path) -> Path:
@@ -470,6 +483,24 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
     parser.add_argument("--features", type=Path, default=DEFAULT_FEATURES)
     parser.add_argument("--transactions", type=Path, default=DEFAULT_TRANSACTIONS)
+    parser.add_argument(
+        "--factor-output",
+        type=Path,
+        default=DEFAULT_FACTOR,
+        help="easy-tdx-compatible factor data path (.parquet or .csv)",
+    )
+    parser.add_argument(
+        "--factor-manifest",
+        type=Path,
+        default=DEFAULT_FACTOR_MANIFEST,
+        help="JSON contract/provenance manifest for the factor export",
+    )
+    parser.add_argument(
+        "--factor-frequency",
+        choices=("daily", "bar"),
+        default="daily",
+        help="factor export granularity; daily is directly usable by FactorAnalyzer",
+    )
     return parser
 
 
@@ -492,6 +523,9 @@ def _config_from_args(args: argparse.Namespace) -> OrderFlowConfig:
 def run(args: argparse.Namespace) -> dict[str, Any]:
     settings = _config_from_args(args)
     _, _, qualified = parse_symbol(args.symbol)
+    factor_frequency = getattr(args, "factor_frequency", "daily")
+    factor_output = getattr(args, "factor_output", DEFAULT_FACTOR)
+    factor_manifest = getattr(args, "factor_manifest", DEFAULT_FACTOR_MANIFEST)
     if args.source == "fixture":
         bars, transactions, provenance = _fixture_data(qualified, bar_minutes=settings.bar_minutes)
         quality = {"warnings": ["synthetic fixture; not market data"]}
@@ -533,7 +567,31 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         features = features.loc[~features["is_warmup"].astype(bool)].reset_index(drop=True)
     if features.empty:
         raise ValueError("no analysis bars remain after applying the date/warm-up window")
+    from .easy_tdx_factor import (
+        build_easy_tdx_factor_frame,
+        factor_definition,
+        save_easy_tdx_factor_bundle,
+    )
+
+    factor_frame = build_easy_tdx_factor_frame(
+        features,
+        frequency=factor_frequency,
+        symbol=qualified,
+    )
+    factor_bundle = save_easy_tdx_factor_bundle(
+        factor_frame,
+        factor_output,
+        manifest_path=factor_manifest,
+        provenance=provenance,
+        frequency=factor_frequency,
+    )
     backtest = run_order_flow_backtest(features, config=settings)
+    factor_report = {
+        **factor_definition(),
+        "frequency": factor_frequency,
+        "output": str(factor_bundle.data_path),
+        "manifest": str(factor_bundle.manifest_path),
+    }
     report = build_report(
         backtest,
         features,
@@ -541,6 +599,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         config=settings,
         provenance=provenance,
         quality=quality,
+        factor=factor_report,
     )
     write_report(report, args.report)
     features_path = _write_frame(features, args.features)
@@ -551,6 +610,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "report": str(args.report),
                 "features": str(features_path),
                 "transactions": str(transactions_path),
+                "factor": str(factor_bundle.data_path),
+                "factor_manifest": str(factor_bundle.manifest_path),
                 "symbol": qualified,
                 "bars": len(features),
                 "transaction_rows": len(transactions),
@@ -576,6 +637,8 @@ if __name__ == "__main__":  # pragma: no cover
 
 
 __all__ = [
+    "DEFAULT_FACTOR",
+    "DEFAULT_FACTOR_MANIFEST",
     "DEFAULT_SYMBOL",
     "build_feature_frame",
     "build_report",
