@@ -264,11 +264,18 @@ focused on durable engineering constraints. Add project-specific rules as the co
 - Status: implemented as an independent research direction under `research/order_flow/`; the CLI
   entry point is `python -m research.order_flow.run` and the default symbol is `SH:688183`.
 - Factor boundary: importing `research.order_flow.easy_tdx_factor` registers the direct
-  `order_flow_delta_ratio` factor through easy-tdx's `Factor`/`register_factor` contract. The
-  registry is process-local in easy-tdx 1.30.3; persisted values use the `date`, `code`, and factor
-  column long format, with a JSON manifest carrying the factor definition and provenance. Daily
-  exports are suitable for `FactorAnalyzer`; intraday bar exports require explicit session
-  aggregation before daily cross-sectional analysis.
+  `order_flow_delta_ratio` and equal-weight `order_flow_participation_score` factors through
+  easy-tdx's `Factor`/`register_factor` contract. The participation score combines causal
+  same-clock activity, trade-size, direction-imbalance, and price-control percentiles on `0-100`;
+  its daily value is the P90 of valid 5-minute scores, while state, direction, confirmation,
+  confidence, and provisional markers remain diagnostics rather than identity claims. Daily
+  summaries must distinguish the latest-bar diagnostics from the dominant state among strong bars.
+  They must also preserve the side of consecutive confirmation instead of inferring it from the
+  dominant state. Confidence is a data-quality/stability diagnostic, not a predictive probability.
+  The registry is process-local in easy-tdx 1.30.3; persisted values use the `date`, `code`, and
+  factor column long format, with separate JSON manifests carrying each definition and provenance.
+  Daily exports are suitable for `FactorAnalyzer`; intraday bar exports require explicit session aggregation
+  before daily cross-sectional analysis.
 - Boundary: `EasyTdxCollector` owns MAC quote, auction, K-line, and paginated `transaction` input;
   normalization, aggregation, causal features, and the pandas backtest wrapper remain separate
   modules. The strategy does not call a provider during simulation and does not depend on AKQuant.
@@ -284,9 +291,11 @@ focused on durable engineering constraints. Add project-specific rules as the co
   provisional-current-session marker are retained in the report. Missing transaction bars stay
   missing.
 - Verification: deterministic order-flow tests cover malformed/unknown flags, pagination,
-  coverage filters, CVD gaps, configurable intervals, timestamp alignment, and backtest keys; a
-  live MAC smoke run has verified quote/auction, 1-minute/5-minute bars, transaction pagination,
-  right-endpoint alignment, and volume reconciliation. Full project checks remain the release gate.
+  coverage filters, CVD gaps, configurable intervals, timestamp alignment, backtest keys,
+  participation bounds, causal baselines, state/confirmation, daily P90 aggregation, and factor
+  persistence; a live MAC smoke run has verified quote/auction, 1-minute/5-minute bars, transaction
+  pagination, right-endpoint alignment, and volume reconciliation. Full project checks remain the
+  release gate.
 - Known limitations: MAC polling can aggregate executions and may omit/lag records; `15:00`
   closing-auction volume is not a continuous-session signal; an unflattened final position is
   marked to market and called out in the report; single-symbol results require an independent

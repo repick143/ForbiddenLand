@@ -1,0 +1,41 @@
+{
+  "protocol": "easy_tdx.factor",
+  "registration": "import research.order_flow.easy_tdx_factor",
+  "factor": {
+    "name": "order_flow_participation_score",
+    "version": "order-flow-participation-score-1",
+    "category": "order_flow",
+    "description": "异常成交活跃度、规模、失衡和价格控制力的等权参与度证据分数",
+    "inputs": [
+      "participation_activity",
+      "participation_size",
+      "participation_imbalance",
+      "participation_control"
+    ],
+    "formula": "25 * (activity + size + imbalance + control)",
+    "range": [0.0, 100.0],
+    "bar_semantics": "current completed-bar participation evidence",
+    "daily_aggregation": "P90 of valid bar scores",
+    "missing_policy": "invalid data, insufficient causal history, or missing components remain NaN",
+    "identity_limit": "evidence from aggregated prints; does not identify accounts or institutions",
+    "confidence_semantics": "data coverage, causal history, component completeness, and score stability; not a predictive probability"
+  },
+  "output_contract": {
+    "daily": [
+      "date",
+      "code",
+      "symbol",
+      "datetime",
+      "order_flow_participation_score"
+    ],
+    "bar": [
+      "date",
+      "code",
+      "symbol",
+      "datetime",
+      "order_flow_participation_score"
+    ],
+    "date": "YYYYMMDD integer",
+    "code": "six-digit string"
+  }
+}

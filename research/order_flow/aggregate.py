@@ -20,6 +20,9 @@ _TRANSACTION_FEATURE_COLUMNS = (
     "trade_count",
     "transaction_rows",
     "large_trade_volume",
+    "large_buy_volume",
+    "large_sell_volume",
+    "large_neutral_volume",
     "large_trade_rows",
     "vwap",
 )
@@ -261,7 +264,17 @@ def aggregate_transactions_to_bars(
             tx["large_trade_volume"] = tx["volume_shares"].where(
                 tx["raw_volume"].ge(large_trade_lots), 0.0
             )
-            tx["large_trade_rows"] = tx["raw_volume"].ge(large_trade_lots).astype(float)
+            large_trade = tx["raw_volume"].ge(large_trade_lots)
+            tx["large_buy_volume"] = tx["volume_shares"].where(
+                large_trade & tx["direction"].eq(1), 0.0
+            )
+            tx["large_sell_volume"] = tx["volume_shares"].where(
+                large_trade & tx["direction"].eq(-1), 0.0
+            )
+            tx["large_neutral_volume"] = tx["volume_shares"].where(
+                large_trade & tx["direction"].eq(0), 0.0
+            )
+            tx["large_trade_rows"] = large_trade.astype(float)
             grouped = (
                 tx.groupby("bar_timestamp", sort=True)
                 .agg(
@@ -276,6 +289,9 @@ def aggregate_transactions_to_bars(
                     trade_count=("trade_count", "sum"),
                     transaction_rows=("volume_shares", "size"),
                     large_trade_volume=("large_trade_volume", "sum"),
+                    large_buy_volume=("large_buy_volume", "sum"),
+                    large_sell_volume=("large_sell_volume", "sum"),
+                    large_neutral_volume=("large_neutral_volume", "sum"),
                     large_trade_rows=("large_trade_rows", "sum"),
                 )
                 .reset_index(names="timestamp")
@@ -297,7 +313,14 @@ def aggregate_transactions_to_bars(
 
     # Derived fields are kept here because they describe the quality of the join, not a trading
     # signal.  Missing transaction aggregates remain missing throughout.
-    for column in ("buy_volume", "sell_volume", "neutral_volume"):
+    for column in (
+        "buy_volume",
+        "sell_volume",
+        "neutral_volume",
+        "large_buy_volume",
+        "large_sell_volume",
+        "large_neutral_volume",
+    ):
         if column not in result:
             result[column] = np.nan
     result["delta"] = result["buy_volume"] - result["sell_volume"]
@@ -307,6 +330,16 @@ def aggregate_transactions_to_bars(
     result["transaction_share_of_bar"] = result["total_transaction_volume"] / result[
         "volume"
     ].where(result["volume"] > 0)
+    result["large_delta"] = result["large_buy_volume"] - result["large_sell_volume"]
+    result["large_delta_ratio"] = result["large_delta"] / result["large_trade_volume"].where(
+        result["large_trade_volume"] > 0
+    )
+    result["average_trade_size"] = result["total_transaction_volume"] / result["trade_count"].where(
+        result["trade_count"] > 0
+    )
+    result["average_trade_amount"] = result["transaction_amount"] / result["trade_count"].where(
+        result["trade_count"] > 0
+    )
     result["transaction_alignment"] = resolved_alignment
     result.attrs["transaction_alignment"] = resolved_alignment
     result.attrs["transaction_alignment_requested"] = transaction_alignment

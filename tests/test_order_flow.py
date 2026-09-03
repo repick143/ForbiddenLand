@@ -31,6 +31,7 @@ from research.order_flow.normalize import (
     normalize_transaction_frame,
     parse_symbol,
 )
+from research.order_flow.participation import PARTICIPATION_FACTOR_NAME
 from research.order_flow.run import (
     _config_from_args,
     _fixture_data,
@@ -586,6 +587,10 @@ def test_fixture_runner_reports_persisted_factor_paths(tmp_path) -> None:
             str(tmp_path / "factor.parquet"),
             "--factor-manifest",
             str(tmp_path / "factor.manifest.json"),
+            "--participation-factor-output",
+            str(tmp_path / "participation-factor.parquet"),
+            "--participation-factor-manifest",
+            str(tmp_path / "participation-factor.manifest.json"),
         ]
     )
     report = run(args)
@@ -593,3 +598,7 @@ def test_fixture_runner_reports_persisted_factor_paths(tmp_path) -> None:
     assert report["factor"]["frequency"] == "daily"
     assert Path(report["factor"]["output"]).exists()
     assert Path(report["factor"]["manifest"]).exists()
+    assert report["participation_factor"]["name"] == PARTICIPATION_FACTOR_NAME
+    assert Path(report["participation_factor"]["output"]).exists()
+    assert Path(report["participation_factor"]["manifest"]).exists()
+    assert len(report["participation_factor"]["recent_sessions"]) == 5

@@ -54,6 +54,12 @@ class OrderFlowConfig:
     unknown_direction_policy: UnknownDirectionPolicy = "neutral"
     cvd_reset_each_session: bool = False
 
+    # Strong-participant evidence factor. The score formula is versioned separately and uses
+    # equal-weight causal percentile components; these fields only classify and confirm states.
+    participation_strong_threshold: float = 75.0
+    participation_direction_threshold: float = 30.0
+    participation_confirmation_bars: int = 2
+
     # Entry: positive signed delta plus a price/volume response.
     entry_delta_ratio: float = 0.20
     entry_rvol: float = 1.20
@@ -118,7 +124,13 @@ class OrderFlowConfig:
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 2:
                 raise ValueError(f"{name} must be an integer of at least 2")
-        for name in ("entry_persistence", "exit_persistence", "min_hold_bars", "cooldown_bars"):
+        for name in (
+            "entry_persistence",
+            "exit_persistence",
+            "min_hold_bars",
+            "cooldown_bars",
+            "participation_confirmation_bars",
+        ):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
                 raise ValueError(f"{name} must be a positive integer")
@@ -171,6 +183,12 @@ class OrderFlowConfig:
             value = float(raw)
             if not np.isfinite(value) or not 0.0 <= value <= 1.0:
                 raise ValueError(f"{name} must be between 0 and 1")
+            object.__setattr__(self, name, value)
+
+        for name in ("participation_strong_threshold", "participation_direction_threshold"):
+            value = float(getattr(self, name))
+            if not np.isfinite(value) or not 0.0 <= value <= 100.0:
+                raise ValueError(f"{name} must be between 0 and 100")
             object.__setattr__(self, name, value)
 
         optional_bounds = {

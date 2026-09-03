@@ -17,10 +17,13 @@ without coupling unrelated studies.
   for 生益电子 (`SH:688183` by default). It audits paginated MAC transactions, verifies lot/share
   volume against daily and minute K-lines, computes causal Delta/CVD/RVOL/VWAP/absorption features,
   exposes configurable signal, timestamp-alignment, and execution parameters, and runs the easy-tdx
-  backtest simulator. It also registers and saves the `order_flow_delta_ratio` custom factor using
-  easy-tdx's `Factor` protocol; daily exports use the `date`/`code` long format expected by
-  `FactorAnalyzer`. Its prediction experiment adds causal future-return labels, factor-bin event
-  studies, rolling Ridge expected-return estimates, and a prediction-to-backtest adapter. Its
+  backtest simulator. It registers and saves both the direct `order_flow_delta_ratio` and the
+  equal-weight `order_flow_participation_score` using easy-tdx's `Factor` protocol. The latter uses
+  prior same-clock activity, trade-size, direction-imbalance, and price-control percentiles, with
+  daily P90 aggregation plus explicit state/confidence diagnostics. Daily exports use the
+  `date`/`code` long format expected by `FactorAnalyzer`. Its prediction experiment adds causal
+  future-return labels, factor-bin event studies, rolling Ridge expected-return estimates, and a
+  prediction-to-backtest adapter. Its
   `auto` alignment records whether the observed endpoint is left- or right-labelled. It does not
   claim complete Level-2 order events or institutional identity.
 - [`technical_analysis/`](technical_analysis/): a reproducible multi-timeframe technical-analysis

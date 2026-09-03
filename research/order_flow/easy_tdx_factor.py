@@ -25,6 +25,13 @@ except ImportError as exc:  # pragma: no cover - exercised in a minimal installa
     ) from exc
 
 from .normalize import parse_symbol
+from .participation import (
+    PARTICIPATION_COMPONENT_COLUMNS,
+    PARTICIPATION_DAILY_QUANTILE,
+    PARTICIPATION_FACTOR_NAME,
+    PARTICIPATION_FACTOR_VERSION,
+    participation_score_from_components,
+)
 
 EASY_TDX_FACTOR_NAME = "order_flow_delta_ratio"
 EASY_TDX_FACTOR_VERSION = "order-flow-delta-ratio-1"
@@ -72,6 +79,26 @@ class OrderFlowDeltaRatio(Factor):
         return result
 
 
+@register_factor
+class OrderFlowParticipationScore(Factor):
+    """Equal-weight evidence score for unusually strong order-flow participation."""
+
+    name = PARTICIPATION_FACTOR_NAME
+    category = "order_flow"
+    description = "异常成交活跃度、规模、失衡和价格控制力的等权参与度证据分数"
+    inputs = PARTICIPATION_COMPONENT_COLUMNS
+
+    def compute(self, df: pd.DataFrame) -> pd.Series:
+        if not isinstance(df, pd.DataFrame):
+            raise TypeError("participation factor input must be a pandas DataFrame")
+        result = participation_score_from_components(df)
+        if "participation_eligible" in df.columns:
+            valid = df["participation_eligible"].fillna(False).astype(bool)
+            result = result.where(valid)
+        result.name = self.name
+        return result
+
+
 @dataclass(frozen=True, slots=True)
 class FactorBundle:
     """Paths and metadata for one persisted easy-tdx factor export."""
@@ -97,6 +124,20 @@ def ensure_order_flow_factor_registered() -> type[Factor]:
     return registered
 
 
+def ensure_participation_factor_registered() -> type[Factor]:
+    """Return the registered participation factor and reject name collisions."""
+
+    registered = FACTORY_REGISTRY.get(PARTICIPATION_FACTOR_NAME)
+    if registered is None:
+        registered = register_factor(OrderFlowParticipationScore)
+    if registered is not OrderFlowParticipationScore:
+        raise RuntimeError(
+            f"easy-tdx factor name collision for {PARTICIPATION_FACTOR_NAME!r}: "
+            f"{registered.__module__}.{registered.__name__}"
+        )
+    return registered
+
+
 def factor_definition() -> dict[str, Any]:
     """Return the serializable metadata contract for the registered factor."""
 
@@ -115,6 +156,35 @@ def factor_definition() -> dict[str, Any]:
     }
 
 
+def participation_factor_definition() -> dict[str, Any]:
+    """Return the versioned metadata contract for the participation factor."""
+
+    factor = ensure_participation_factor_registered()
+    return {
+        "protocol": "easy_tdx.factor",
+        "name": factor.name,
+        "version": PARTICIPATION_FACTOR_VERSION,
+        "class": f"{factor.__module__}.{factor.__name__}",
+        "category": factor.category,
+        "description": factor.description,
+        "inputs": list(factor.inputs),
+        "formula": "25 * (activity + size + imbalance + control)",
+        "range": [0.0, 100.0],
+        "bar_semantics": "current completed-bar participation evidence",
+        "daily_aggregation": f"P{int(PARTICIPATION_DAILY_QUANTILE * 100)} of valid bar scores",
+        "missing_policy": (
+            "invalid data, insufficient causal history, or missing components remain NaN"
+        ),
+        "identity_limit": (
+            "evidence from aggregated prints; does not identify accounts or institutions"
+        ),
+        "confidence_semantics": (
+            "data coverage, causal history, component completeness, and score stability; "
+            "not a predictive probability"
+        ),
+    }
+
+
 def compute_order_flow_factor(frame: pd.DataFrame) -> pd.Series:
     """Compute the factor through easy-tdx's ``FactorEngine`` contract."""
 
@@ -123,6 +193,16 @@ def compute_order_flow_factor(frame: pd.DataFrame) -> pd.Series:
 
     result = FactorEngine().compute_single(frame, [EASY_TDX_FACTOR_NAME])
     return result[EASY_TDX_FACTOR_NAME]
+
+
+def compute_participation_factor(frame: pd.DataFrame) -> pd.Series:
+    """Compute the participation factor through easy-tdx's ``FactorEngine`` contract."""
+
+    ensure_participation_factor_registered()
+    from easy_tdx.factor import FactorEngine
+
+    result = FactorEngine().compute_single(frame, [PARTICIPATION_FACTOR_NAME])
+    return result[PARTICIPATION_FACTOR_NAME]
 
 
 def _resolve_code(value: Any) -> tuple[str, str]:
@@ -163,7 +243,6 @@ def _prepare_export_frame(frame: pd.DataFrame, symbol: str | None) -> pd.DataFra
     data["code"] = parsed.map(lambda value: value[0])
     data["symbol"] = parsed.map(lambda value: value[1])
     data["date"] = data["datetime"].dt.strftime("%Y%m%d").astype("int64")
-    data["_factor_value"] = compute_order_flow_factor(data)
     data = data.sort_values(["code", "datetime"], kind="mergesort").reset_index(drop=True)
     if data.duplicated(["code", "datetime"]).any():
         raise ValueError("factor export contains duplicate code/datetime rows")
@@ -187,6 +266,7 @@ def build_easy_tdx_factor_frame(
     if frequency not in {"bar", "daily"}:
         raise ValueError("factor export frequency must be bar or daily")
     data = _prepare_export_frame(frame, symbol)
+    data["_factor_value"] = compute_order_flow_factor(data)
     if frequency == "bar":
         return data[["date", "code", "symbol", "datetime", "_factor_value"]].rename(
             columns={"_factor_value": EASY_TDX_FACTOR_NAME}
@@ -210,6 +290,40 @@ def build_easy_tdx_factor_frame(
     result[EASY_TDX_FACTOR_NAME] = result[EASY_TDX_FACTOR_NAME].replace([np.inf, -np.inf], np.nan)
     return (
         result[["date", "code", "symbol", "datetime", EASY_TDX_FACTOR_NAME]]
+        .sort_values(["date", "code"], kind="mergesort")
+        .reset_index(drop=True)
+    )
+
+
+def build_easy_tdx_participation_factor_frame(
+    frame: pd.DataFrame,
+    *,
+    frequency: FactorOutputFrequency = "daily",
+    symbol: str | None = None,
+) -> pd.DataFrame:
+    """Build a bar score or daily P90 participation factor table."""
+
+    if frequency not in {"bar", "daily"}:
+        raise ValueError("factor export frequency must be bar or daily")
+    data = _prepare_export_frame(frame, symbol)
+    data["_factor_value"] = compute_participation_factor(data)
+    if frequency == "bar":
+        return data[["date", "code", "symbol", "datetime", "_factor_value"]].rename(
+            columns={"_factor_value": PARTICIPATION_FACTOR_NAME}
+        )
+
+    valid = data.loc[data["_factor_value"].notna()].copy()
+    grouped = data.groupby(["date", "code"], sort=True, dropna=False)
+    timestamps = grouped["datetime"].max().rename("datetime")
+    symbols = grouped["symbol"].first().rename("symbol")
+    values = (
+        valid.groupby(["date", "code"], sort=True, dropna=False)["_factor_value"]
+        .quantile(PARTICIPATION_DAILY_QUANTILE)
+        .rename(PARTICIPATION_FACTOR_NAME)
+    )
+    result = pd.concat([timestamps, symbols, values], axis=1).reset_index()
+    return (
+        result[["date", "code", "symbol", "datetime", PARTICIPATION_FACTOR_NAME]]
         .sort_values(["date", "code"], kind="mergesort")
         .reset_index(drop=True)
     )
@@ -244,6 +358,8 @@ def save_easy_tdx_factor_bundle(
     manifest_path: str | Path | None = None,
     provenance: Mapping[str, Any] | None = None,
     frequency: FactorOutputFrequency = "daily",
+    factor_name: str = EASY_TDX_FACTOR_NAME,
+    factor_metadata: Mapping[str, Any] | None = None,
 ) -> FactorBundle:
     """Persist factor values and a provenance/contract manifest.
 
@@ -253,7 +369,9 @@ def save_easy_tdx_factor_bundle(
 
     if not isinstance(factor_frame, pd.DataFrame):
         raise TypeError("factor_frame must be a pandas DataFrame")
-    required = {"date", "code", EASY_TDX_FACTOR_NAME}
+    if not isinstance(factor_name, str) or not factor_name.strip():
+        raise ValueError("factor_name must be a non-empty string")
+    required = {"date", "code", factor_name}
     missing = sorted(required.difference(factor_frame.columns))
     if missing:
         raise ValueError("factor frame is missing columns: " + ", ".join(missing))
@@ -278,11 +396,21 @@ def save_easy_tdx_factor_bundle(
         else actual_path.with_name(actual_path.stem + ".manifest.json")
     )
     manifest_destination.parent.mkdir(parents=True, exist_ok=True)
-    factor_values = pd.to_numeric(factor_frame[EASY_TDX_FACTOR_NAME], errors="coerce")
+    factor_values = pd.to_numeric(factor_frame[factor_name], errors="coerce")
+    definition = dict(factor_metadata or {})
+    if not definition:
+        if factor_name == EASY_TDX_FACTOR_NAME:
+            definition = factor_definition()
+        elif factor_name == PARTICIPATION_FACTOR_NAME:
+            definition = participation_factor_definition()
+        else:
+            raise ValueError(f"factor metadata is required for unknown factor {factor_name!r}")
+    if definition.get("name") != factor_name:
+        raise ValueError("factor metadata name does not match factor_name")
     manifest: dict[str, Any] = {
         "schema_version": 1,
         "protocol": "easy_tdx.factor",
-        "factor": factor_definition(),
+        "factor": _json_value(definition),
         "data": {
             "path": str(actual_path),
             "format": actual_path.suffix.casefold().lstrip("."),
@@ -309,9 +437,14 @@ __all__ = [
     "FactorBundle",
     "FactorOutputFrequency",
     "OrderFlowDeltaRatio",
+    "OrderFlowParticipationScore",
     "build_easy_tdx_factor_frame",
+    "build_easy_tdx_participation_factor_frame",
     "compute_order_flow_factor",
+    "compute_participation_factor",
     "ensure_order_flow_factor_registered",
+    "ensure_participation_factor_registered",
     "factor_definition",
+    "participation_factor_definition",
     "save_easy_tdx_factor_bundle",
 ]

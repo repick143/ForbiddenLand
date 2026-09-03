@@ -12,8 +12,8 @@ simulation.
 direction`, `1=sell direction`, `2=neutral`, and `5=after-hours`.  `vol` is converted from the
 protocol lot unit to shares with a configurable, audited factor (100 by default).  These are
 aggressor-side direction proxies, not order IDs, account identities, or a complete Level-2 order
-event stream.  The strategy therefore reports pressure, response, divergence, and absorption
-candidates instead of a fabricated institutional-money score.
+event stream.  The strategy therefore reports pressure, response, divergence, absorption, and a
+bounded participation-evidence score without claiming to identify an institution.
 
 The default target bar is a 5-minute easy-tdx K-line with `adjust=NONE`.  Continuous-session
 prints are used for signals; auction and after-hours prints remain in the reconciliation report and
@@ -33,6 +33,7 @@ easy-tdx MAC client (one host)
   -> page, timestamp, session, unit and volume audits
   -> transaction-to-bar aggregation
   -> causal Delta/CVD/RVOL/VWAP/impact/divergence features
+  -> causal participation strength, direction, state and confidence
   -> configurable entry/exit candidates
   -> easy-tdx BacktestEngine (next bar, fees, lot size)
 ```
@@ -114,6 +115,7 @@ The most useful controls are:
 | Data | `bar_minutes`, `transaction_alignment`, `transaction_lot_size`, `volume_baseline_sessions`, `min_history_sessions`, `large_trade_lots` | Target interval, left/right endpoint mapping, unit conversion, same-clock warm-up and large-print definition |
 | Quality | `min_transaction_coverage`, `max_transaction_coverage`, `min_large_trade_share`, `max_large_trade_share`, `unknown_direction_policy` | Reject incomplete/over-counted bars or require a share of large prints; handle unknown flags |
 | Session/CVD | `include_auction`, `include_after_hours`, `cvd_reset_each_session`, `persistence_same_session` | Retain non-continuous records for audit, reset CVD, and prevent persistence across breaks; signal bars remain continuous-session bars |
+| Participation | `participation_strong_threshold`, `participation_direction_threshold`, `participation_confirmation_bars` | Classify strong evidence, assign a direction, and require consecutive same-session confirmation |
 | Entry | `entry_delta_ratio`, `entry_delta_zscore`, `entry_rvol`, `entry_close_location`, `entry_price_return`, `entry_persistence`, `use_vwap_filter`, `entry_vwap_distance` | Demand pressure, standardized pressure, relative volume, close strength, pullback allowance and persistence |
 | Exit | `exit_delta_ratio`, `exit_delta_zscore`, `exit_rvol`, `exit_close_location`, `exit_price_return`, `exit_persistence`, `use_absorption_exit`, `absorption_rvol`, `absorption_max_abs_return`, `divergence_price_threshold`, `use_vwap_exit_filter`, `exit_vwap_distance` | Supply, standardized pressure, bearish absorption, flow/price disagreement and VWAP loss |
 | Risk | `min_hold_bars`, `max_hold_bars`, `stop_loss_pct`, `take_profit_pct`, `cooldown_bars`, `t_plus_one`, `flat_at_session_end` | Holding, close/high/low risk exits, cooldown and A-share sellability |
@@ -158,18 +160,77 @@ The collector controls are also adjustable from the CLI: `transaction-days`, `tr
 `--no-fetch-quote`/`--no-fetch-auction`.  These change data coverage and network cost, not the
 signal definition.
 
-## easy-tdx custom factor
+## Participation evidence factor
+
+The runner also produces `order_flow_participation_score`, a `0-100` measure of whether the
+current 5-minute bar contains unusually strong participation evidence.  It is not a probability,
+an account classification, or a direct buy/sell signal.  Four `0-1` components have fixed equal
+weights:
+
+| Component | Causal inputs |
+| --- | --- |
+| Activity | Prior same-clock percentiles of transaction volume and trade count |
+| Size | Prior same-clock percentiles of average trade amount and large-print volume share |
+| Imbalance | Prior same-clock percentiles of absolute Delta and large-print Delta ratios |
+| Control | Prior same-clock percentile of flow/price alignment or absorption strength |
+
+```text
+order_flow_participation_score = 25 * (activity + size + imbalance + control)
+```
+
+Only earlier valid observations at the same clock slot enter each rolling baseline.  The default
+thresholds classify a score of at least `75` as strong evidence and a signed direction magnitude
+of at least `30` as directional; two consecutive directional bars in the same morning or afternoon
+segment set `participation_confirmed=true`.  State values distinguish active buying/selling,
+passive buy absorption, passive sell distribution, conflicting evidence, no clear evidence, and
+unavailable data.
+
+Daily factor output is the P90 of valid 5-minute scores, which captures a session's strong-participant
+peak without letting one maximum print determine the entire day.  The report separately retains
+the latest score/state/direction/confirmation/confidence and the whole-session mean, peak,
+score-weighted direction, dominant strong-bar state, strong/confirmed bar shares, valid-bar count,
+confirmed buy/sell direction, and provisional marker.  Use enough earlier sessions for warm-up;
+the following command uses 30 prior sessions and displays the latest five sessions in the JSON
+report:
+
+```bash
+.venv/bin/python -m research.order_flow.run \
+  --source live \
+  --symbol SH:688183 \
+  --transaction-days 40 \
+  --volume-baseline-sessions 30 \
+  --min-history-sessions 30 \
+  --participation-factor-output reports/order_flow_688183_participation_factor.parquet \
+  --participation-factor-manifest reports/order_flow_688183_participation_factor.manifest.json \
+  --report reports/order_flow_688183_participation.json
+```
+
+The versioned definition is in
+[`order_flow_participation_factor.json`](order_flow_participation_factor.json).  Large-print
+classification still depends on the configured row-volume threshold, and `bs_flag` remains only an
+aggressor-side proxy.  Reported confidence measures data coverage, causal-history availability,
+component completeness, and score stability; it is not a predictive probability.  Compare the
+factor across more symbols and out-of-sample periods before using it in a strategy.
+
+## easy-tdx custom factors
 
 `easy-tdx==1.30.3` exposes custom factors through the `Factor`/`register_factor` protocol.  The
-project registers `order_flow_delta_ratio` when `research.order_flow.easy_tdx_factor` is imported:
+project registers both `order_flow_delta_ratio` and `order_flow_participation_score` when
+`research.order_flow.easy_tdx_factor` is imported:
 
 ```python
 from easy_tdx.factor import FactorEngine
-from research.order_flow.easy_tdx_factor import EASY_TDX_FACTOR_NAME
+from research.order_flow.easy_tdx_factor import (
+    EASY_TDX_FACTOR_NAME,
+    PARTICIPATION_FACTOR_NAME,
+)
 
 # Importing the module registers the class in easy_tdx's process-local registry.
 engine = FactorEngine()
-factor_frame = engine.compute_single(order_flow_features, [EASY_TDX_FACTOR_NAME])
+factor_frame = engine.compute_single(
+    order_flow_features,
+    [EASY_TDX_FACTOR_NAME, PARTICIPATION_FACTOR_NAME],
+)
 ```
 
 The factor is deliberately the direct, bounded Delta ratio:
@@ -178,7 +239,8 @@ The factor is deliberately the direct, bounded Delta ratio:
 (buy_volume - sell_volume) / total_transaction_volume
 ```
 
-It has no hidden scoring weights.  Missing transaction rows and rows rejected by
+It has no hidden scoring weights.  The participation factor's four equal weights are separately
+versioned and documented above.  Missing transaction rows and rows rejected by
 `of_data_valid` remain `NaN`, and the input frequency is supplied by the caller.  The definition
 is also kept in [`order_flow_factor.json`](order_flow_factor.json).
 
@@ -190,11 +252,13 @@ discovery.  The runner therefore writes both a factor table and a manifest:
   --source live \
   --factor-frequency daily \
   --factor-output reports/order_flow_688183_factor.parquet \
-  --factor-manifest reports/order_flow_688183_factor.manifest.json
+  --factor-manifest reports/order_flow_688183_factor.manifest.json \
+  --participation-factor-output reports/order_flow_688183_participation_factor.parquet \
+  --participation-factor-manifest reports/order_flow_688183_participation_factor.manifest.json
 ```
 
 Daily output has one row per `date`/`code` and columns `date`, `code`, `symbol`, `datetime`, and
-`order_flow_delta_ratio`, matching the long-format inputs expected by `FactorAnalyzer`.  Use
+the selected factor column, matching the long-format inputs expected by `FactorAnalyzer`.  Use
 `--factor-frequency bar` to retain every 5-minute timestamp for intraday inspection; that output
 must be explicitly aggregated by session before daily cross-sectional IC or quantile analysis.
 The manifest records the actual file format/path, factor contract, source host, retrieval time,

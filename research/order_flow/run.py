@@ -18,6 +18,11 @@ from .collector import EasyTdxCollector, EasyTdxOrderFlowSnapshot
 from .config import ORDER_FLOW_VERSION, OrderFlowConfig
 from .features import compute_order_flow_features, summarize_order_flow
 from .normalize import normalize_bar_frame, normalize_transaction_frame, parse_symbol
+from .participation import (
+    PARTICIPATION_FACTOR_NAME,
+    compute_participation_features,
+    summarize_participation_sessions,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SYMBOL = "SH:688183"
@@ -26,6 +31,12 @@ DEFAULT_FEATURES = PROJECT_ROOT / "reports" / "order_flow_688183_features.csv"
 DEFAULT_TRANSACTIONS = PROJECT_ROOT / "reports" / "order_flow_688183_transactions.parquet"
 DEFAULT_FACTOR = PROJECT_ROOT / "reports" / "order_flow_688183_factor.parquet"
 DEFAULT_FACTOR_MANIFEST = PROJECT_ROOT / "reports" / "order_flow_688183_factor.manifest.json"
+DEFAULT_PARTICIPATION_FACTOR = (
+    PROJECT_ROOT / "reports" / "order_flow_688183_participation_factor.parquet"
+)
+DEFAULT_PARTICIPATION_FACTOR_MANIFEST = (
+    PROJECT_ROOT / "reports" / "order_flow_688183_participation_factor.manifest.json"
+)
 
 
 def _json_value(value: Any) -> Any:
@@ -74,6 +85,11 @@ def _events(frame: pd.DataFrame, limit: int = 100) -> list[dict[str, Any]]:
         "bearish_absorption",
         "transaction_coverage",
         "order_flow_delta_ratio",
+        PARTICIPATION_FACTOR_NAME,
+        "participation_direction_score",
+        "participation_state",
+        "participation_confirmed",
+        "participation_confidence",
     ]
     available = [column for column in columns if column in frame.columns]
     return [
@@ -249,6 +265,10 @@ def build_feature_frame(
 
     features[EASY_TDX_FACTOR_NAME] = compute_order_flow_factor(features)
     features.attrs["easy_tdx_factor_name"] = EASY_TDX_FACTOR_NAME
+    features = compute_participation_features(features, settings)
+    from .easy_tdx_factor import compute_participation_factor
+
+    features[PARTICIPATION_FACTOR_NAME] = compute_participation_factor(features)
     features.attrs.update(aggregated.attrs)
     return features
 
@@ -262,6 +282,7 @@ def build_report(
     provenance: dict[str, Any],
     quality: dict[str, Any] | None = None,
     factor: dict[str, Any] | None = None,
+    participation: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Create a reproducible report without embedding the large source frames."""
 
@@ -344,6 +365,8 @@ def build_report(
     }
     if factor is not None:
         report["factor"] = factor
+    if participation is not None:
+        report["participation_factor"] = participation
     return report
 
 
@@ -440,6 +463,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--volume-baseline-sessions", type=int)
     parser.add_argument("--min-history-sessions", type=int)
     parser.add_argument("--large-trade-lots", type=int)
+    parser.add_argument("--participation-strong-threshold", type=float)
+    parser.add_argument("--participation-direction-threshold", type=float)
+    parser.add_argument("--participation-confirmation-bars", type=int)
     parser.add_argument("--entry-delta-ratio", type=float)
     parser.add_argument("--entry-rvol", type=float)
     parser.add_argument("--entry-close-location", type=float)
@@ -501,6 +527,18 @@ def _parser() -> argparse.ArgumentParser:
         default="daily",
         help="factor export granularity; daily is directly usable by FactorAnalyzer",
     )
+    parser.add_argument(
+        "--participation-factor-output",
+        type=Path,
+        default=DEFAULT_PARTICIPATION_FACTOR,
+        help="participation factor data path (.parquet or .csv)",
+    )
+    parser.add_argument(
+        "--participation-factor-manifest",
+        type=Path,
+        default=DEFAULT_PARTICIPATION_FACTOR_MANIFEST,
+        help="JSON contract/provenance manifest for the participation factor",
+    )
     return parser
 
 
@@ -526,6 +564,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     factor_frequency = getattr(args, "factor_frequency", "daily")
     factor_output = getattr(args, "factor_output", DEFAULT_FACTOR)
     factor_manifest = getattr(args, "factor_manifest", DEFAULT_FACTOR_MANIFEST)
+    participation_factor_output = getattr(
+        args, "participation_factor_output", DEFAULT_PARTICIPATION_FACTOR
+    )
+    participation_factor_manifest = getattr(
+        args, "participation_factor_manifest", DEFAULT_PARTICIPATION_FACTOR_MANIFEST
+    )
     if args.source == "fixture":
         bars, transactions, provenance = _fixture_data(qualified, bar_minutes=settings.bar_minutes)
         quality = {"warnings": ["synthetic fixture; not market data"]}
@@ -569,7 +613,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("no analysis bars remain after applying the date/warm-up window")
     from .easy_tdx_factor import (
         build_easy_tdx_factor_frame,
+        build_easy_tdx_participation_factor_frame,
         factor_definition,
+        participation_factor_definition,
         save_easy_tdx_factor_bundle,
     )
 
@@ -585,12 +631,41 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         provenance=provenance,
         frequency=factor_frequency,
     )
+    participation_factor_frame = build_easy_tdx_participation_factor_frame(
+        features,
+        frequency=factor_frequency,
+        symbol=qualified,
+    )
+    participation_factor_bundle = save_easy_tdx_factor_bundle(
+        participation_factor_frame,
+        participation_factor_output,
+        manifest_path=participation_factor_manifest,
+        provenance=provenance,
+        frequency=factor_frequency,
+        factor_name=PARTICIPATION_FACTOR_NAME,
+        factor_metadata=participation_factor_definition(),
+    )
     backtest = run_order_flow_backtest(features, config=settings)
     factor_report = {
         **factor_definition(),
         "frequency": factor_frequency,
         "output": str(factor_bundle.data_path),
         "manifest": str(factor_bundle.manifest_path),
+    }
+    participation_trend = summarize_participation_sessions(features)
+    participation_report = {
+        **participation_factor_definition(),
+        "frequency": factor_frequency,
+        "output": str(participation_factor_bundle.data_path),
+        "manifest": str(participation_factor_bundle.manifest_path),
+        "latest": (
+            _json_value(participation_trend.iloc[-1].to_dict())
+            if not participation_trend.empty
+            else None
+        ),
+        "recent_sessions": [
+            _json_value(row) for row in participation_trend.tail(5).to_dict(orient="records")
+        ],
     }
     report = build_report(
         backtest,
@@ -600,6 +675,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         provenance=provenance,
         quality=quality,
         factor=factor_report,
+        participation=participation_report,
     )
     write_report(report, args.report)
     features_path = _write_frame(features, args.features)
@@ -612,6 +688,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "transactions": str(transactions_path),
                 "factor": str(factor_bundle.data_path),
                 "factor_manifest": str(factor_bundle.manifest_path),
+                "participation_factor": str(participation_factor_bundle.data_path),
+                "participation_factor_manifest": str(participation_factor_bundle.manifest_path),
+                "participation_latest": participation_report["latest"],
                 "symbol": qualified,
                 "bars": len(features),
                 "transaction_rows": len(transactions),
@@ -639,6 +718,8 @@ if __name__ == "__main__":  # pragma: no cover
 __all__ = [
     "DEFAULT_FACTOR",
     "DEFAULT_FACTOR_MANIFEST",
+    "DEFAULT_PARTICIPATION_FACTOR",
+    "DEFAULT_PARTICIPATION_FACTOR_MANIFEST",
     "DEFAULT_SYMBOL",
     "build_feature_frame",
     "build_report",

@@ -220,7 +220,10 @@ DuckDB，也不会进入 Git。图表使用 `lightweight-charts`，页面保留 
   也不把聚合成交记录当作完整 Level-2 委托事件。`transaction_alignment=auto` 会记录并保留
   实际采用的左/右端点映射；当前已验证 MAC 主机的分钟 K 线按右端点标记，合成 fixture 按左
   端点标记。报告同时保留 easy-tdx 原始指标和按交易日修正的分钟回测统计。模块还按
-  easy-tdx `Factor`/`register_factor` 协议注册 `order_flow_delta_ratio`，并将每日
+  easy-tdx `Factor`/`register_factor` 协议注册 `order_flow_delta_ratio` 和
+  `order_flow_participation_score`。后者将同一时刻的历史活跃度、成交规模、方向失衡和价格
+  控制力四项等权映射到 `0-100`，日级使用有效 5 分钟分数的 P90，并输出方向、状态、连续
+  确认、置信度和盘中 provisional 标记；它是参与证据，不识别账户或机构。两个因子都将
   `date`/`code` 长格式因子表及 provenance manifest 保存到 `reports/`；easy-tdx 的注册表本身
   是进程内的，不会跨进程自动发现项目模块。`research.order_flow.predict` 在此基础上提供
   不跨午休的未来收益标签、因子分桶事件研究、按交易日滚动 Ridge 预测和预测信号回测适配；
