@@ -15,8 +15,9 @@ import pandas as pd
 from .aggregate import aggregate_transactions_to_bars
 from .backtest import OrderFlowBacktestResult, run_order_flow_backtest
 from .collector import EasyTdxCollector, EasyTdxOrderFlowSnapshot
-from .config import ORDER_FLOW_VERSION, OrderFlowConfig
+from .config import OrderFlowConfig, order_flow_version_for_strategy
 from .features import compute_order_flow_features, summarize_order_flow
+from .features_v2 import compute_order_flow_v2_features, summarize_order_flow_v2
 from .normalize import normalize_bar_frame, normalize_transaction_frame, parse_symbol
 from .participation import (
     PARTICIPATION_FACTOR_NAME,
@@ -59,11 +60,26 @@ def _json_value(value: Any) -> Any:
     return str(value)
 
 
-def _events(frame: pd.DataFrame, limit: int = 100) -> list[dict[str, Any]]:
+def _events(
+    frame: pd.DataFrame,
+    limit: int = 100,
+    *,
+    strategy_version: str | None = None,
+) -> list[dict[str, Any]]:
     if frame.empty:
         return []
-    entry = frame.get("of_entry_signal", pd.Series(False, index=frame.index)).fillna(False)
-    exit_ = frame.get("of_exit_signal", pd.Series(False, index=frame.index)).fillna(False)
+    if strategy_version is not None:
+        selected_version = strategy_version
+    elif "strategy_version" in frame.columns and not frame.empty:
+        selected_version = str(frame["strategy_version"].iloc[0])
+    else:
+        selected_version = "v1"
+    if selected_version == "v2":
+        entry_column, exit_column = "of_v2_entry_signal", "of_v2_exit_signal"
+    else:
+        entry_column, exit_column = "of_entry_signal", "of_exit_signal"
+    entry = frame.get(entry_column, pd.Series(False, index=frame.index)).fillna(False)
+    exit_ = frame.get(exit_column, pd.Series(False, index=frame.index)).fillna(False)
     mask = entry.astype(bool) | exit_.astype(bool)
     columns = [
         "timestamp",
@@ -85,6 +101,20 @@ def _events(frame: pd.DataFrame, limit: int = 100) -> list[dict[str, Any]]:
         "bearish_absorption",
         "transaction_coverage",
         "order_flow_delta_ratio",
+        "order_flow_v2_score",
+        "of_v2_entry_candidate",
+        "of_v2_exit_candidate",
+        "of_v2_entry_signal",
+        "of_v2_exit_signal",
+        "v2_flow_pressure",
+        "v2_execution_quality",
+        "v2_absorption_score",
+        "v2_regime_alignment",
+        "v2_divergence_score",
+        "v2_large_flow_score",
+        "v2_score_confidence",
+        "v2_participation_state",
+        "v2_participation_confirmed",
         PARTICIPATION_FACTOR_NAME,
         "participation_direction_score",
         "participation_state",
@@ -269,6 +299,24 @@ def build_feature_frame(
     from .easy_tdx_factor import compute_participation_factor
 
     features[PARTICIPATION_FACTOR_NAME] = compute_participation_factor(features)
+    # Keep the earlier participation diagnostic available for side-by-side V1/V2 review before the
+    # V2 aliases below intentionally take over the concise, strategy-facing names.
+    for column in (
+        "participation_state",
+        "participation_confirmed",
+        "participation_direction_score",
+        "participation_confidence",
+    ):
+        if column in features.columns:
+            features[f"v1_{column}"] = features[column]
+    features = compute_order_flow_v2_features(features, settings)
+    if settings.strategy_version == "v2":
+        features["strong_participation_score"] = features["v2_strong_participation_score"]
+        features["participation_direction"] = features["v2_participation_direction"]
+        features["participation_state"] = features["v2_participation_state"]
+        features["participation_confirmed"] = features["v2_participation_confirmed"]
+    features["strategy_version"] = settings.strategy_version
+    features["order_flow_version"] = order_flow_version_for_strategy(settings.strategy_version)
     features.attrs.update(aggregated.attrs)
     return features
 
@@ -319,10 +367,15 @@ def build_report(
         )
     report = {
         "schema_version": 1,
-        "order_flow_version": ORDER_FLOW_VERSION,
+        "order_flow_version": order_flow_version_for_strategy(config.strategy_version),
+        "strategy_version": config.strategy_version,
         "engine": "easy_tdx.backtest.BacktestEngine",
         "engine_version": engine_version,
-        "strategy": "transaction_direction_proxy_long_only",
+        "strategy": (
+            "transaction_direction_proxy_v2_long_only"
+            if config.strategy_version == "v2"
+            else "transaction_direction_proxy_v1_long_only"
+        ),
         "symbol": {"code": symbol.split(":", 1)[-1], "exchange": symbol.split(":", 1)[0]},
         "data": {
             **provenance,
@@ -354,7 +407,7 @@ def build_report(
             key: _json_value(value) for key, value in backtest.raw_engine_performance.items()
         },
         "signal_summary": summarize_order_flow(features),
-        "events": _events(features),
+        "events": _events(features, strategy_version=config.strategy_version),
         "trades": _trade_rows(backtest, features),
         "validation": {
             "warnings": list(dict.fromkeys(warnings)),
@@ -363,6 +416,8 @@ def build_report(
             "sample_sufficient_for_reference": trade_count >= 30,
         },
     }
+    if "of_v2_data_valid" in features.columns:
+        report["signal_summary_v2"] = summarize_order_flow_v2(features)
     if factor is not None:
         report["factor"] = factor
     if participation is not None:
@@ -417,6 +472,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--start-date", default=None, help="YYYYMMDD")
     parser.add_argument("--end-date", default=None, help="YYYYMMDD")
     parser.add_argument("--config", type=Path, default=None, help="UTF-8 JSON strategy config")
+    parser.add_argument("--strategy-version", choices=("v1", "v2"))
     parser.add_argument("--bar-minutes", type=int, choices=(1, 5, 15, 30, 60))
     parser.add_argument(
         "--transaction-alignment",
@@ -466,6 +522,21 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--participation-strong-threshold", type=float)
     parser.add_argument("--participation-direction-threshold", type=float)
     parser.add_argument("--participation-confirmation-bars", type=int)
+    parser.add_argument("--v2-fast-span", type=int)
+    parser.add_argument("--v2-medium-span", type=int)
+    parser.add_argument("--v2-slow-span", type=int)
+    parser.add_argument("--v2-flow-window", type=int)
+    parser.add_argument("--v2-percentile-window", type=int)
+    parser.add_argument("--v2-regime-window", type=int)
+    parser.add_argument("--v2-min-observations", type=int)
+    parser.add_argument("--v2-min-component-count", type=int)
+    parser.add_argument("--v2-score-entry-threshold", type=float)
+    parser.add_argument("--v2-score-exit-threshold", type=float)
+    parser.add_argument("--v2-exhaustion-threshold", type=float)
+    parser.add_argument("--v2-min-confidence", type=float)
+    parser.add_argument("--v2-use-regime-filter", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--v2-reset-each-session", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--v2-require-confirmation", action=argparse.BooleanOptionalAction)
     parser.add_argument("--entry-delta-ratio", type=float)
     parser.add_argument("--entry-rvol", type=float)
     parser.add_argument("--entry-close-location", type=float)
@@ -612,24 +683,40 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if features.empty:
         raise ValueError("no analysis bars remain after applying the date/warm-up window")
     from .easy_tdx_factor import (
+        ORDER_FLOW_V2_FACTOR_NAME,
         build_easy_tdx_factor_frame,
+        build_easy_tdx_order_flow_v2_factor_frame,
         build_easy_tdx_participation_factor_frame,
         factor_definition,
+        order_flow_v2_factor_definition,
         participation_factor_definition,
         save_easy_tdx_factor_bundle,
     )
 
-    factor_frame = build_easy_tdx_factor_frame(
-        features,
-        frequency=factor_frequency,
-        symbol=qualified,
-    )
+    if settings.strategy_version == "v2":
+        factor_name = ORDER_FLOW_V2_FACTOR_NAME
+        factor_metadata = order_flow_v2_factor_definition()
+        factor_frame = build_easy_tdx_order_flow_v2_factor_frame(
+            features,
+            frequency=factor_frequency,
+            symbol=qualified,
+        )
+    else:
+        factor_name = None
+        factor_metadata = factor_definition()
+        factor_frame = build_easy_tdx_factor_frame(
+            features,
+            frequency=factor_frequency,
+            symbol=qualified,
+        )
     factor_bundle = save_easy_tdx_factor_bundle(
         factor_frame,
         factor_output,
         manifest_path=factor_manifest,
         provenance=provenance,
         frequency=factor_frequency,
+        factor_name=factor_name or factor_metadata["name"],
+        factor_metadata=factor_metadata,
     )
     participation_factor_frame = build_easy_tdx_participation_factor_frame(
         features,
@@ -647,12 +734,26 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     )
     backtest = run_order_flow_backtest(features, config=settings)
     factor_report = {
-        **factor_definition(),
+        **factor_metadata,
         "frequency": factor_frequency,
         "output": str(factor_bundle.data_path),
         "manifest": str(factor_bundle.manifest_path),
     }
-    participation_trend = summarize_participation_sessions(features)
+    participation_frame = features
+    if settings.strategy_version == "v2":
+        # V2 uses concise participation aliases for strategy diagnostics.  Restore the separately
+        # computed V1 participation labels when building the legacy participation-factor report.
+        participation_frame = features.copy()
+        for column in (
+            "participation_state",
+            "participation_confirmed",
+            "participation_direction_score",
+            "participation_confidence",
+        ):
+            legacy = f"v1_{column}"
+            if legacy in participation_frame.columns:
+                participation_frame[column] = participation_frame[legacy]
+    participation_trend = summarize_participation_sessions(participation_frame)
     participation_report = {
         **participation_factor_definition(),
         "frequency": factor_frequency,

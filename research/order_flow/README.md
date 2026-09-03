@@ -3,7 +3,8 @@
 This research direction implements a long-only order-flow proxy for A-share data using the
 `easy-tdx` MAC transaction endpoint and matching K-lines.  It is deliberately separate from the
 AKQuant VSA demo and does not require AKQuant for acquisition, feature generation, or execution
-simulation.
+simulation.  The original strategy is V1 and remains the default; the advanced multi-scale path
+described below is explicitly selected with `strategy_version="v2"` or `--strategy-version v2`.
 
 ## What the feed can and cannot say
 
@@ -34,7 +35,7 @@ easy-tdx MAC client (one host)
   -> transaction-to-bar aggregation
   -> causal Delta/CVD/RVOL/VWAP/impact/divergence features
   -> causal participation strength, direction, state and confidence
-  -> configurable entry/exit candidates
+  -> V1 or V2 versioned entry/exit candidates
   -> easy-tdx BacktestEngine (next bar, fees, lot size)
 ```
 
@@ -81,6 +82,7 @@ file; omitted options keep the file value.
 
 ```json
 {
+  "strategy_version": "v1",
   "bar_minutes": 5,
   "transaction_alignment": "auto",
   "volume_baseline_sessions": 30,
@@ -116,6 +118,8 @@ The most useful controls are:
 | Quality | `min_transaction_coverage`, `max_transaction_coverage`, `min_large_trade_share`, `max_large_trade_share`, `unknown_direction_policy` | Reject incomplete/over-counted bars or require a share of large prints; handle unknown flags |
 | Session/CVD | `include_auction`, `include_after_hours`, `cvd_reset_each_session`, `persistence_same_session` | Retain non-continuous records for audit, reset CVD, and prevent persistence across breaks; signal bars remain continuous-session bars |
 | Participation | `participation_strong_threshold`, `participation_direction_threshold`, `participation_confirmation_bars` | Classify strong evidence, assign a direction, and require consecutive same-session confirmation |
+| V2 | `v2_fast_span`, `v2_medium_span`, `v2_slow_span`, `v2_flow_window`, `v2_percentile_window`, `v2_regime_window`, `v2_min_observations`, `v2_min_component_count` | Multi-scale pressure, rolling context, regime and component-availability controls |
+| V2 signals | `v2_score_entry_threshold`, `v2_score_exit_threshold`, `v2_exhaustion_threshold`, `v2_min_confidence`, `v2_use_regime_filter`, `v2_reset_each_session`, `v2_require_confirmation` | Score thresholds, exhaustion exit, confidence gate, regime filter, session carry and confirmation |
 | Entry | `entry_delta_ratio`, `entry_delta_zscore`, `entry_rvol`, `entry_close_location`, `entry_price_return`, `entry_persistence`, `use_vwap_filter`, `entry_vwap_distance` | Demand pressure, standardized pressure, relative volume, close strength, pullback allowance and persistence |
 | Exit | `exit_delta_ratio`, `exit_delta_zscore`, `exit_rvol`, `exit_close_location`, `exit_price_return`, `exit_persistence`, `use_absorption_exit`, `absorption_rvol`, `absorption_max_abs_return`, `divergence_price_threshold`, `use_vwap_exit_filter`, `exit_vwap_distance` | Supply, standardized pressure, bearish absorption, flow/price disagreement and VWAP loss |
 | Risk | `min_hold_bars`, `max_hold_bars`, `stop_loss_pct`, `take_profit_pct`, `cooldown_bars`, `t_plus_one`, `flat_at_session_end` | Holding, close/high/low risk exits, cooldown and A-share sellability |
@@ -159,6 +163,61 @@ The collector controls are also adjustable from the CLI: `transaction-days`, `tr
 `transaction-page-size`, `bar-count`, `daily-count`, `validation-days`, `collector-timeout`, and
 `--no-fetch-quote`/`--no-fetch-auction`.  These change data coverage and network cost, not the
 signal definition.
+
+## V2 strategy
+
+V1 consumes the original `of_entry_signal`/`of_exit_signal` rules based on Delta, relative volume,
+close location, absorption, divergence, and VWAP filters.  V2 keeps every V1 column for comparison,
+but the strategy class consumes only `of_v2_entry_signal`/`of_v2_exit_signal` when
+`strategy_version="v2"`.  The report and feature frame then carry `strategy_version: "v2"` and
+`order_flow_version: "order-flow-proxy-2"`; omitting the option preserves V1 behavior.
+
+The V2 signed score is the equal-weight mean of six bounded, causal components:
+
+| Component | Interpretation from available easy-tdx fields |
+| --- | --- |
+| `v2_flow_pressure` | Fast/medium/slow EWM of transaction Delta |
+| `v2_execution_quality` | Whether signed price response is efficient relative to local range and flow consistency |
+| `v2_absorption_score` | Hidden-demand/supply proxy when high activity produces a small price result |
+| `v2_regime_alignment` | Flow agreement with trend efficiency and volatility regime |
+| `v2_divergence_score` | Signed flow/price disagreement; positive means resilient price against sell flow |
+| `v2_large_flow_score` | Directional large-print Delta attenuated by large-print share |
+
+```text
+order_flow_v2_score = mean(the six available components)
+```
+
+Rows with fewer than `v2_min_component_count` score components, insufficient percentile history, or
+invalid/missing transactions remain `NaN` and cannot generate a V2 signal.  The parameter accepts
+`2` through `6`; the separate strength stage has five percentile components and therefore caps its
+own readiness requirement at five.  `v2_score_confidence` is component completeness, not a
+probability.  The optional `v2_quote_imbalance` and `v2_microprice_edge` columns are used only when
+five-level quote fields are present; their absence does not manufacture a book imbalance.
+
+By default V2 resets rolling state at morning/afternoon and calendar-session boundaries.  Set
+`v2_reset_each_session=false` to carry state across those known breaks; irregular gaps within a
+session, missing/invalid transaction bars, and out-of-session rows still reset the state.  This
+choice is recorded in `parameters` and should be held fixed when comparing experiments.
+
+Run the V2 strategy and export its primary factor with the dedicated example configuration:
+
+```bash
+.venv/bin/python -m research.order_flow.run \
+  --config research/order_flow/order_flow.v2.example.json \
+  --source live \
+  --symbol SH:688183 \
+  --transaction-days 60 \
+  --factor-output reports/order_flow_688183_v2_factor.parquet \
+  --factor-manifest reports/order_flow_688183_v2_factor.manifest.json \
+  --report reports/order_flow_688183_v2.json
+```
+
+The V2 factor contract is stored in
+[`order_flow_factor_v2.json`](order_flow_factor_v2.json), and its easy-tdx name is
+`order_flow_v2_score`.  The daily export is the mean of valid V2 bar scores for each session; use
+`--factor-frequency bar` when the downstream study needs every completed 5-minute observation.
+V2 remains a transaction-direction proxy: `bs_flag` is not a complete Level-2 event stream and no
+component identifies an account or institution.
 
 ## Participation evidence factor
 
@@ -215,13 +274,15 @@ factor across more symbols and out-of-sample periods before using it in a strate
 ## easy-tdx custom factors
 
 `easy-tdx==1.30.3` exposes custom factors through the `Factor`/`register_factor` protocol.  The
-project registers both `order_flow_delta_ratio` and `order_flow_participation_score` when
-`research.order_flow.easy_tdx_factor` is imported:
+project registers `order_flow_delta_ratio` (V1-compatible), `order_flow_v2_score` (V2), and
+`order_flow_participation_score` (auxiliary evidence) when `research.order_flow.easy_tdx_factor`
+is imported:
 
 ```python
 from easy_tdx.factor import FactorEngine
 from research.order_flow.easy_tdx_factor import (
     EASY_TDX_FACTOR_NAME,
+    ORDER_FLOW_V2_FACTOR_NAME,
     PARTICIPATION_FACTOR_NAME,
 )
 
@@ -229,7 +290,7 @@ from research.order_flow.easy_tdx_factor import (
 engine = FactorEngine()
 factor_frame = engine.compute_single(
     order_flow_features,
-    [EASY_TDX_FACTOR_NAME, PARTICIPATION_FACTOR_NAME],
+    [EASY_TDX_FACTOR_NAME, ORDER_FLOW_V2_FACTOR_NAME, PARTICIPATION_FACTOR_NAME],
 )
 ```
 

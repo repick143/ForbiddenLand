@@ -262,10 +262,14 @@ focused on durable engineering constraints. Add project-specific rules as the co
 ### easy-tdx transaction order-flow proxy
 
 - Status: implemented as an independent research direction under `research/order_flow/`; the CLI
-  entry point is `python -m research.order_flow.run` and the default symbol is `SH:688183`.
+  entry point is `python -m research.order_flow.run` and the default symbol is `SH:688183`. V1 is
+  the compatibility default; `--strategy-version v2` selects the versioned advanced strategy.
 - Factor boundary: importing `research.order_flow.easy_tdx_factor` registers the direct
-  `order_flow_delta_ratio` and equal-weight `order_flow_participation_score` factors through
-  easy-tdx's `Factor`/`register_factor` contract. The participation score combines causal
+  `order_flow_delta_ratio`, `order_flow_v2_score`, and equal-weight `order_flow_participation_score`
+  factors through easy-tdx's `Factor`/`register_factor` contract. V2 combines six bounded causal
+  components (multi-scale pressure, execution quality, absorption, regime alignment, flow/price
+  divergence, and directional large-print flow); `v2_min_component_count` accepts 2-6 and invalid
+  or insufficient rows remain missing. The participation score combines causal
   same-clock activity, trade-size, direction-imbalance, and price-control percentiles on `0-100`;
   its daily value is the P90 of valid 5-minute scores, while state, direction, confirmation,
   confidence, and provisional markers remain diagnostics rather than identity claims. Daily
@@ -275,7 +279,8 @@ focused on durable engineering constraints. Add project-specific rules as the co
   The registry is process-local in easy-tdx 1.30.3; persisted values use the `date`, `code`, and
   factor column long format, with separate JSON manifests carrying each definition and provenance.
   Daily exports are suitable for `FactorAnalyzer`; intraday bar exports require explicit session aggregation
-  before daily cross-sectional analysis.
+  before daily cross-sectional analysis. V2 daily output uses the mean of valid completed-bar V2
+  scores and is stored separately from the participation P90 export.
 - Boundary: `EasyTdxCollector` owns MAC quote, auction, K-line, and paginated `transaction` input;
   normalization, aggregation, causal features, and the pandas backtest wrapper remain separate
   modules. The strategy does not call a provider during simulation and does not depend on AKQuant.
@@ -292,7 +297,8 @@ focused on durable engineering constraints. Add project-specific rules as the co
   missing.
 - Verification: deterministic order-flow tests cover malformed/unknown flags, pagination,
   coverage filters, CVD gaps, configurable intervals, timestamp alignment, backtest keys,
-  participation bounds, causal baselines, state/confirmation, daily P90 aggregation, and factor
+  participation bounds, causal baselines, state/confirmation, daily P90 aggregation, V2 component
+  bounds, session-reset behavior, short-window handling, versioned strategy selection, and factor
   persistence; a live MAC smoke run has verified quote/auction, 1-minute/5-minute bars, transaction
   pagination, right-endpoint alignment, and volume reconciliation. Full project checks remain the
   release gate.

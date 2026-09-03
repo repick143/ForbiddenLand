@@ -15,7 +15,9 @@ from typing import Any, Literal
 
 import numpy as np
 
-ORDER_FLOW_VERSION = "order-flow-proxy-1"
+ORDER_FLOW_V1_VERSION = "order-flow-proxy-1"
+ORDER_FLOW_V2_VERSION = "order-flow-proxy-2"
+ORDER_FLOW_VERSION = ORDER_FLOW_V1_VERSION
 
 UnknownDirectionPolicy = Literal["neutral", "drop", "error"]
 PositionMode = Literal["full", "fixed", "percent"]
@@ -23,6 +25,7 @@ ExecutionMode = Literal["next_open", "next_close"]
 RejectPolicy = Literal["reduce", "skip"]
 SignalPath = Literal["auto", "vector", "loop"]
 TransactionAlignment = Literal["auto", "floor", "ceil"]
+StrategyVersion = Literal["v1", "v2"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +40,10 @@ class OrderFlowConfig:
     Optional filters use ``None`` or a neutral zero value to mean "disabled".  This makes it
     possible to add a stricter experiment through a JSON file without changing the baseline run.
     """
+
+    # ``v1`` remains the compatibility default.  ``v2`` adds the composite flow/participation
+    # path while retaining all v1 columns so experiments can be compared on the same snapshot.
+    strategy_version: StrategyVersion = "v1"
 
     # Normalization and feature baselines.
     bar_minutes: int = 5
@@ -59,6 +66,23 @@ class OrderFlowConfig:
     participation_strong_threshold: float = 75.0
     participation_direction_threshold: float = 30.0
     participation_confirmation_bars: int = 2
+
+    # V2 multi-scale and state parameters.  Spans/windows are bar counts, not calendar periods.
+    v2_fast_span: int = 3
+    v2_medium_span: int = 12
+    v2_slow_span: int = 48
+    v2_flow_window: int = 24
+    v2_percentile_window: int = 48
+    v2_regime_window: int = 24
+    v2_min_observations: int = 8
+    v2_min_component_count: int = 3
+    v2_score_entry_threshold: float = 0.20
+    v2_score_exit_threshold: float = -0.20
+    v2_exhaustion_threshold: float = 0.10
+    v2_min_confidence: float = 0.60
+    v2_use_regime_filter: bool = False
+    v2_reset_each_session: bool = True
+    v2_require_confirmation: bool = True
 
     # Entry: positive signed delta plus a price/volume response.
     entry_delta_ratio: float = 0.20
@@ -111,6 +135,8 @@ class OrderFlowConfig:
     signal_path: SignalPath = "auto"
 
     def __post_init__(self) -> None:
+        if self.strategy_version not in {"v1", "v2"}:
+            raise ValueError("strategy_version must be v1 or v2")
         if (
             isinstance(self.bar_minutes, bool)
             or not isinstance(self.bar_minutes, int)
@@ -134,6 +160,28 @@ class OrderFlowConfig:
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
                 raise ValueError(f"{name} must be a positive integer")
+        for name in (
+            "v2_fast_span",
+            "v2_medium_span",
+            "v2_slow_span",
+            "v2_flow_window",
+            "v2_percentile_window",
+            "v2_regime_window",
+            "v2_min_observations",
+            "v2_min_component_count",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 2:
+                raise ValueError(f"{name} must be an integer of at least 2")
+        if not self.v2_fast_span < self.v2_medium_span < self.v2_slow_span:
+            raise ValueError("v2 spans must satisfy fast < medium < slow")
+        if self.v2_min_observations > self.v2_percentile_window:
+            raise ValueError("v2_min_observations must not exceed v2_percentile_window")
+        # The signed V2 score has six components.  The participation-strength stage has five;
+        # when this value is six it requires all signed components and all available strength
+        # components (the feature path caps the latter at five).
+        if self.v2_min_component_count > 6:
+            raise ValueError("v2_min_component_count must not exceed 6")
         if isinstance(self.warmup_bars, bool) or not isinstance(self.warmup_bars, int):
             raise TypeError("warmup_bars must be a non-negative integer")
         if self.warmup_bars < 0:
@@ -170,6 +218,9 @@ class OrderFlowConfig:
             "t_plus_one",
             "flat_at_session_end",
             "auto_fees",
+            "v2_use_regime_filter",
+            "v2_reset_each_session",
+            "v2_require_confirmation",
         ):
             if not isinstance(getattr(self, name), bool):
                 raise TypeError(f"{name} must be a boolean")
@@ -190,6 +241,28 @@ class OrderFlowConfig:
             if not np.isfinite(value) or not 0.0 <= value <= 100.0:
                 raise ValueError(f"{name} must be between 0 and 100")
             object.__setattr__(self, name, value)
+
+        signed_v2 = {
+            "v2_score_entry_threshold": self.v2_score_entry_threshold,
+            "v2_score_exit_threshold": self.v2_score_exit_threshold,
+        }
+        for name, raw in signed_v2.items():
+            value = float(raw)
+            if not np.isfinite(value) or not -1.0 <= value <= 1.0:
+                raise ValueError(f"{name} must be between -1 and 1")
+            object.__setattr__(self, name, value)
+        if self.v2_score_entry_threshold < 0.0:
+            raise ValueError("v2_score_entry_threshold must be non-negative")
+        if self.v2_score_exit_threshold > 0.0:
+            raise ValueError("v2_score_exit_threshold must be non-positive")
+        exhaustion = float(self.v2_exhaustion_threshold)
+        if not np.isfinite(exhaustion) or not 0.0 <= exhaustion <= 1.0:
+            raise ValueError("v2_exhaustion_threshold must be between 0 and 1")
+        object.__setattr__(self, "v2_exhaustion_threshold", exhaustion)
+        confidence = float(self.v2_min_confidence)
+        if not np.isfinite(confidence) or not 0.0 <= confidence <= 1.0:
+            raise ValueError("v2_min_confidence must be between 0 and 1")
+        object.__setattr__(self, "v2_min_confidence", confidence)
 
         optional_bounds = {
             "min_transaction_coverage": self.min_transaction_coverage,
@@ -357,17 +430,33 @@ class OrderFlowConfig:
         """Return a JSON-friendly versioned parameter snapshot."""
 
         values = asdict(self)
-        values["order_flow_version"] = ORDER_FLOW_VERSION
+        values["order_flow_version"] = (
+            ORDER_FLOW_V2_VERSION if self.strategy_version == "v2" else ORDER_FLOW_V1_VERSION
+        )
         return values
 
 
+def order_flow_version_for_strategy(strategy_version: StrategyVersion) -> str:
+    """Return the protocol version associated with a strategy path."""
+
+    if strategy_version == "v1":
+        return ORDER_FLOW_V1_VERSION
+    if strategy_version == "v2":
+        return ORDER_FLOW_V2_VERSION
+    raise ValueError("strategy_version must be v1 or v2")
+
+
 __all__ = [
+    "ORDER_FLOW_V1_VERSION",
+    "ORDER_FLOW_V2_VERSION",
     "ORDER_FLOW_VERSION",
     "ExecutionMode",
     "OrderFlowConfig",
     "PositionMode",
     "RejectPolicy",
     "SignalPath",
+    "StrategyVersion",
     "TransactionAlignment",
     "UnknownDirectionPolicy",
+    "order_flow_version_for_strategy",
 ]

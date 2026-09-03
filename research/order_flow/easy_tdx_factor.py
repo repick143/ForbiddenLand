@@ -24,6 +24,7 @@ except ImportError as exc:  # pragma: no cover - exercised in a minimal installa
         "install the project's data profile first"
     ) from exc
 
+from .features_v2 import V2_FEATURE_VERSION, V2_SCORE_COMPONENTS
 from .normalize import parse_symbol
 from .participation import (
     PARTICIPATION_COMPONENT_COLUMNS,
@@ -35,10 +36,17 @@ from .participation import (
 
 EASY_TDX_FACTOR_NAME = "order_flow_delta_ratio"
 EASY_TDX_FACTOR_VERSION = "order-flow-delta-ratio-1"
+ORDER_FLOW_V2_FACTOR_NAME = "order_flow_v2_score"
+ORDER_FLOW_V2_FACTOR_VERSION = "order-flow-v2-score-1"
+# Descriptive aliases make the versioned boundary easy to discover without breaking the original
+# easy-tdx factor names.
+EASY_TDX_V2_FACTOR_NAME = ORDER_FLOW_V2_FACTOR_NAME
+EASY_TDX_V2_FACTOR_VERSION = ORDER_FLOW_V2_FACTOR_VERSION
 FactorOutputFrequency = Literal["bar", "daily"]
 
 _FACTOR_INPUTS = ("buy_volume", "sell_volume", "total_transaction_volume")
 _FACTOR_FORMULA = "(buy_volume - sell_volume) / total_transaction_volume"
+_V2_FACTOR_MIN_COMPONENTS = 3
 
 
 @register_factor
@@ -73,10 +81,66 @@ class OrderFlowDeltaRatio(Factor):
         result = (values["buy_volume"] - values["sell_volume"]) / denominator
         result = result.replace([np.inf, -np.inf], np.nan).astype("float64")
         if "of_data_valid" in df.columns:
-            valid = df["of_data_valid"].fillna(False).astype(bool)
+            valid = _boolean_mask(df["of_data_valid"], default=False)
             result = result.where(valid)
         result.name = self.name
         return result
+
+
+def _boolean_mask(values: pd.Series, *, default: bool = True) -> pd.Series:
+    """Parse a validity column safely after CSV/Parquet round trips."""
+
+    if pd.api.types.is_bool_dtype(values):
+        return values.fillna(default).astype(bool)
+    text = values.astype("string").str.strip().str.casefold()
+    numeric = pd.to_numeric(values, errors="coerce")
+    missing = values.isna() | text.eq("")
+    truthy = text.isin({"true", "t", "yes", "y"}) | numeric.eq(1.0).fillna(False)
+    falsy = text.isin({"false", "f", "no", "n"}) | numeric.eq(0.0).fillna(False)
+    invalid = ~(missing | truthy | falsy)
+    if invalid.any():
+        examples = values.loc[invalid].astype("string").drop_duplicates().head(3).tolist()
+        raise ValueError(f"validity column contains invalid boolean values: {examples}")
+    result = pd.Series(default, index=values.index, dtype=bool)
+    result.loc[truthy] = True
+    result.loc[falsy] = False
+    return result
+
+
+@register_factor
+class OrderFlowV2Score(Factor):
+    """Composite signed score built from causal V2 microstructure proxies."""
+
+    name = ORDER_FLOW_V2_FACTOR_NAME
+    category = "order_flow"
+    description = "多尺度成交压力、冲击效率、吸收、状态一致性和流价背离的复合分数"
+    inputs = V2_SCORE_COMPONENTS
+
+    def compute(self, df: pd.DataFrame) -> pd.Series:
+        if not isinstance(df, pd.DataFrame):
+            raise TypeError("order-flow V2 factor input must be a pandas DataFrame")
+        missing = sorted(set(self.inputs).difference(df.columns))
+        if missing:
+            raise ValueError("order-flow V2 factor input is missing columns: " + ", ".join(missing))
+        values = df.loc[:, self.inputs].apply(pd.to_numeric, errors="coerce")
+        count = values.notna().sum(axis=1)
+        minimum = pd.to_numeric(
+            df.get(
+                "v2_score_min_component_count",
+                pd.Series(_V2_FACTOR_MIN_COMPONENTS, index=df.index),
+            ),
+            errors="coerce",
+        ).fillna(_V2_FACTOR_MIN_COMPONENTS)
+        invalid_minimum = minimum.lt(2) | minimum.gt(len(self.inputs)) | minimum.ne(minimum.round())
+        if invalid_minimum.any():
+            raise ValueError(
+                f"v2_score_min_component_count must be an integer between 2 and {len(self.inputs)}"
+            )
+        result = values.mean(axis=1, skipna=True).where(count.ge(minimum)).clip(-1.0, 1.0)
+        if "of_v2_data_valid" in df.columns:
+            result = result.where(_boolean_mask(df["of_v2_data_valid"], default=False))
+        result.name = self.name
+        return result.astype("float64")
 
 
 @register_factor
@@ -93,7 +157,7 @@ class OrderFlowParticipationScore(Factor):
             raise TypeError("participation factor input must be a pandas DataFrame")
         result = participation_score_from_components(df)
         if "participation_eligible" in df.columns:
-            valid = df["participation_eligible"].fillna(False).astype(bool)
+            valid = _boolean_mask(df["participation_eligible"], default=False)
             result = result.where(valid)
         result.name = self.name
         return result
@@ -119,6 +183,20 @@ def ensure_order_flow_factor_registered() -> type[Factor]:
     if registered is not OrderFlowDeltaRatio:
         raise RuntimeError(
             f"easy-tdx factor name collision for {EASY_TDX_FACTOR_NAME!r}: "
+            f"{registered.__module__}.{registered.__name__}"
+        )
+    return registered
+
+
+def ensure_order_flow_v2_factor_registered() -> type[Factor]:
+    """Return the registered V2 factor class and reject registry collisions."""
+
+    registered = FACTORY_REGISTRY.get(ORDER_FLOW_V2_FACTOR_NAME)
+    if registered is None:
+        registered = register_factor(OrderFlowV2Score)
+    if registered is not OrderFlowV2Score:
+        raise RuntimeError(
+            f"easy-tdx factor name collision for {ORDER_FLOW_V2_FACTOR_NAME!r}: "
             f"{registered.__module__}.{registered.__name__}"
         )
     return registered
@@ -154,6 +232,42 @@ def factor_definition() -> dict[str, Any]:
         "range": [-1.0, 1.0],
         "missing_policy": "missing transaction or invalid quality rows remain NaN",
     }
+
+
+def order_flow_v2_factor_definition() -> dict[str, Any]:
+    """Return the serializable V2 factor contract."""
+
+    factor = ensure_order_flow_v2_factor_registered()
+    return {
+        "protocol": "easy_tdx.factor",
+        "name": factor.name,
+        "version": ORDER_FLOW_V2_FACTOR_VERSION,
+        "class": f"{factor.__module__}.{factor.__name__}",
+        "category": factor.category,
+        "description": factor.description,
+        "strategy_version": "v2",
+        "inputs": list(factor.inputs),
+        "formula": (
+            "mean(v2_flow_pressure, v2_execution_quality, v2_absorption_score, "
+            "v2_regime_alignment, v2_divergence_score, v2_large_flow_score) "
+            "with at least v2_min_component_count available components (2-6; default 3)"
+        ),
+        "range": [-1.0, 1.0],
+        "bar_semantics": "current completed-bar causal order-flow evidence",
+        "feature_version": V2_FEATURE_VERSION,
+        "minimum_component_parameter": "v2_min_component_count (2-6)",
+        "strength_component_count": 5,
+        "missing_policy": (
+            "invalid rows or fewer than the minimum available components remain NaN"
+        ),
+        "identity_limit": (
+            "aggregated transaction proxies; does not identify accounts or institutions"
+        ),
+    }
+
+
+# Short alias for callers that use the same naming convention as ``factor_definition``.
+v2_factor_definition = order_flow_v2_factor_definition
 
 
 def participation_factor_definition() -> dict[str, Any]:
@@ -193,6 +307,16 @@ def compute_order_flow_factor(frame: pd.DataFrame) -> pd.Series:
 
     result = FactorEngine().compute_single(frame, [EASY_TDX_FACTOR_NAME])
     return result[EASY_TDX_FACTOR_NAME]
+
+
+def compute_order_flow_v2_factor(frame: pd.DataFrame) -> pd.Series:
+    """Compute the canonical V2 factor through easy-tdx's ``FactorEngine`` contract."""
+
+    ensure_order_flow_v2_factor_registered()
+    from easy_tdx.factor import FactorEngine
+
+    result = FactorEngine().compute_single(frame, [ORDER_FLOW_V2_FACTOR_NAME])
+    return result[ORDER_FLOW_V2_FACTOR_NAME]
 
 
 def compute_participation_factor(frame: pd.DataFrame) -> pd.Series:
@@ -293,6 +417,44 @@ def build_easy_tdx_factor_frame(
         .sort_values(["date", "code"], kind="mergesort")
         .reset_index(drop=True)
     )
+
+
+def build_easy_tdx_order_flow_v2_factor_frame(
+    frame: pd.DataFrame,
+    *,
+    frequency: FactorOutputFrequency = "daily",
+    symbol: str | None = None,
+) -> pd.DataFrame:
+    """Build a bar-level or daily mean V2 factor table in easy-tdx long format."""
+
+    if frequency not in {"bar", "daily"}:
+        raise ValueError("factor export frequency must be bar or daily")
+    data = _prepare_export_frame(frame, symbol)
+    data["_factor_value"] = compute_order_flow_v2_factor(data)
+    if frequency == "bar":
+        return data[["date", "code", "symbol", "datetime", "_factor_value"]].rename(
+            columns={"_factor_value": ORDER_FLOW_V2_FACTOR_NAME}
+        )
+
+    grouped = data.groupby(["date", "code"], sort=True, dropna=False)
+    timestamps = grouped["datetime"].max().rename("datetime")
+    symbols = grouped["symbol"].first().rename("symbol")
+    valid = data.loc[data["_factor_value"].notna()]
+    values = (
+        valid.groupby(["date", "code"], sort=True, dropna=False)["_factor_value"]
+        .mean()
+        .rename(ORDER_FLOW_V2_FACTOR_NAME)
+    )
+    result = pd.concat([timestamps, symbols, values], axis=1).reset_index()
+    return (
+        result[["date", "code", "symbol", "datetime", ORDER_FLOW_V2_FACTOR_NAME]]
+        .sort_values(["date", "code"], kind="mergesort")
+        .reset_index(drop=True)
+    )
+
+
+# Keep both the verbose and concise spellings available for downstream research notebooks.
+build_easy_tdx_v2_factor_frame = build_easy_tdx_order_flow_v2_factor_frame
 
 
 def build_easy_tdx_participation_factor_frame(
@@ -401,6 +563,8 @@ def save_easy_tdx_factor_bundle(
     if not definition:
         if factor_name == EASY_TDX_FACTOR_NAME:
             definition = factor_definition()
+        elif factor_name == ORDER_FLOW_V2_FACTOR_NAME:
+            definition = order_flow_v2_factor_definition()
         elif factor_name == PARTICIPATION_FACTOR_NAME:
             definition = participation_factor_definition()
         else:
@@ -434,17 +598,28 @@ def save_easy_tdx_factor_bundle(
 __all__ = [
     "EASY_TDX_FACTOR_NAME",
     "EASY_TDX_FACTOR_VERSION",
+    "EASY_TDX_V2_FACTOR_NAME",
+    "EASY_TDX_V2_FACTOR_VERSION",
+    "ORDER_FLOW_V2_FACTOR_NAME",
+    "ORDER_FLOW_V2_FACTOR_VERSION",
     "FactorBundle",
     "FactorOutputFrequency",
     "OrderFlowDeltaRatio",
     "OrderFlowParticipationScore",
+    "OrderFlowV2Score",
     "build_easy_tdx_factor_frame",
+    "build_easy_tdx_order_flow_v2_factor_frame",
     "build_easy_tdx_participation_factor_frame",
+    "build_easy_tdx_v2_factor_frame",
     "compute_order_flow_factor",
+    "compute_order_flow_v2_factor",
     "compute_participation_factor",
     "ensure_order_flow_factor_registered",
+    "ensure_order_flow_v2_factor_registered",
     "ensure_participation_factor_registered",
     "factor_definition",
+    "order_flow_v2_factor_definition",
     "participation_factor_definition",
     "save_easy_tdx_factor_bundle",
+    "v2_factor_definition",
 ]

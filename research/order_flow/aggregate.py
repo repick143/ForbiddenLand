@@ -19,6 +19,11 @@ _TRANSACTION_FEATURE_COLUMNS = (
     "transaction_amount",
     "trade_count",
     "transaction_rows",
+    "buy_trade_count",
+    "sell_trade_count",
+    "neutral_trade_count",
+    "trade_volume_squared",
+    "max_trade_volume",
     "large_trade_volume",
     "large_buy_volume",
     "large_sell_volume",
@@ -261,6 +266,10 @@ def aggregate_transactions_to_bars(
             tx["buy_amount"] = tx["amount"].where(tx["direction"].eq(1), 0.0)
             tx["sell_amount"] = tx["amount"].where(tx["direction"].eq(-1), 0.0)
             tx["neutral_amount"] = tx["amount"].where(tx["direction"].eq(0), 0.0)
+            tx["buy_trade_count"] = tx["trade_count"].where(tx["direction"].eq(1), 0.0)
+            tx["sell_trade_count"] = tx["trade_count"].where(tx["direction"].eq(-1), 0.0)
+            tx["neutral_trade_count"] = tx["trade_count"].where(tx["direction"].eq(0), 0.0)
+            tx["trade_volume_squared"] = tx["volume_shares"].pow(2)
             tx["large_trade_volume"] = tx["volume_shares"].where(
                 tx["raw_volume"].ge(large_trade_lots), 0.0
             )
@@ -288,6 +297,11 @@ def aggregate_transactions_to_bars(
                     transaction_amount=("amount", "sum"),
                     trade_count=("trade_count", "sum"),
                     transaction_rows=("volume_shares", "size"),
+                    buy_trade_count=("buy_trade_count", "sum"),
+                    sell_trade_count=("sell_trade_count", "sum"),
+                    neutral_trade_count=("neutral_trade_count", "sum"),
+                    trade_volume_squared=("trade_volume_squared", "sum"),
+                    max_trade_volume=("volume_shares", "max"),
                     large_trade_volume=("large_trade_volume", "sum"),
                     large_buy_volume=("large_buy_volume", "sum"),
                     large_sell_volume=("large_sell_volume", "sum"),
@@ -317,6 +331,11 @@ def aggregate_transactions_to_bars(
         "buy_volume",
         "sell_volume",
         "neutral_volume",
+        "buy_trade_count",
+        "sell_trade_count",
+        "neutral_trade_count",
+        "trade_volume_squared",
+        "max_trade_volume",
         "large_buy_volume",
         "large_sell_volume",
         "large_neutral_volume",
@@ -338,6 +357,18 @@ def aggregate_transactions_to_bars(
         result["trade_count"] > 0
     )
     result["average_trade_amount"] = result["transaction_amount"] / result["trade_count"].where(
+        result["trade_count"] > 0
+    )
+    result["trade_size_hhi"] = result["trade_volume_squared"] / result[
+        "total_transaction_volume"
+    ].pow(2).where(result["total_transaction_volume"] > 0)
+    result["max_trade_share"] = result["max_trade_volume"] / result[
+        "total_transaction_volume"
+    ].where(result["total_transaction_volume"] > 0)
+    result["buy_trade_share"] = result["buy_trade_count"] / result["trade_count"].where(
+        result["trade_count"] > 0
+    )
+    result["sell_trade_share"] = result["sell_trade_count"] / result["trade_count"].where(
         result["trade_count"] > 0
     )
     result["transaction_alignment"] = resolved_alignment

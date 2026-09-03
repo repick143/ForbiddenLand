@@ -87,6 +87,13 @@ class OrderFlowStrategy(_EasyTdxStrategy):
             and current_date <= self._entry_available_date
         )
 
+    def _signal_columns(self) -> tuple[str, str, str]:
+        """Return the validity, entry, and exit columns for the selected strategy version."""
+
+        if self.config.strategy_version == "v2":
+            return "of_v2_data_valid", "of_v2_entry_signal", "of_v2_exit_signal"
+        return "of_data_valid", "of_entry_signal", "of_exit_signal"
+
     def _risk_exit(self) -> str:
         settings = self.config
         reference = self._entry_reference_price
@@ -114,6 +121,7 @@ class OrderFlowStrategy(_EasyTdxStrategy):
 
     def next(self) -> None:
         settings = self.config
+        valid_column, entry_column, exit_column = self._signal_columns()
         current_date = self._current_date()
         position = float(self.position.get("size", 0.0))
 
@@ -125,9 +133,9 @@ class OrderFlowStrategy(_EasyTdxStrategy):
                 self._entry_reference_price = None
             if self._bar_index < self._cooldown_until:
                 return
-            if _number(self, "of_data_valid", 0.0) <= 0.0:
+            if _number(self, valid_column, 0.0) <= 0.0:
                 return
-            if _number(self, "of_entry_signal", 0.0) <= 0.0:
+            if _number(self, entry_column, 0.0) <= 0.0:
                 return
             self.buy(size=self._size())
             self._entry_signal_index = self._bar_index
@@ -155,7 +163,7 @@ class OrderFlowStrategy(_EasyTdxStrategy):
             reason = "max_hold"
         if not reason and settings.flat_at_session_end and _number(self, "is_session_last") > 0.0:
             reason = "session_end"
-        if not reason and _number(self, "of_exit_signal") > 0.0:
+        if not reason and _number(self, exit_column) > 0.0:
             reason = "supply_or_divergence"
         if reason:
             self.sell(size=0.0)

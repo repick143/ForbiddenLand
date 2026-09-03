@@ -16,14 +16,15 @@ without coupling unrelated studies.
 - [`order_flow/`](order_flow/): an independent easy-tdx transaction-direction order-flow proxy
   for 生益电子 (`SH:688183` by default). It audits paginated MAC transactions, verifies lot/share
   volume against daily and minute K-lines, computes causal Delta/CVD/RVOL/VWAP/absorption features,
-  exposes configurable signal, timestamp-alignment, and execution parameters, and runs the easy-tdx
-  backtest simulator. It registers and saves both the direct `order_flow_delta_ratio` and the
-  equal-weight `order_flow_participation_score` using easy-tdx's `Factor` protocol. The latter uses
-  prior same-clock activity, trade-size, direction-imbalance, and price-control percentiles, with
-  daily P90 aggregation plus explicit state/confidence diagnostics. Daily exports use the
-  `date`/`code` long format expected by `FactorAnalyzer`. Its prediction experiment adds causal
-  future-return labels, factor-bin event studies, rolling Ridge expected-return estimates, and a
-  prediction-to-backtest adapter. Its
+  exposes configurable V1/V2 signal, timestamp-alignment, and execution parameters, and runs the
+  easy-tdx backtest simulator. V1 remains the default; V2 adds multi-scale pressure, execution
+  quality, absorption, regime alignment, flow/price divergence, and large-print proxies while
+  retaining V1 columns for comparison. It registers and saves the V2 `order_flow_v2_score` factor,
+  the direct V1-compatible `order_flow_delta_ratio`, and the equal-weight
+  `order_flow_participation_score` using easy-tdx's `Factor` protocol. Daily exports use the
+  `date`/`code` long format expected by `FactorAnalyzer`; manifests record the selected strategy
+  version and provenance. Its prediction experiment adds causal future-return labels, factor-bin
+  event studies, rolling Ridge expected-return estimates, and a prediction-to-backtest adapter. Its
   `auto` alignment records whether the observed endpoint is left- or right-labelled. It does not
   claim complete Level-2 order events or institutional identity.
 - [`technical_analysis/`](technical_analysis/): a reproducible multi-timeframe technical-analysis

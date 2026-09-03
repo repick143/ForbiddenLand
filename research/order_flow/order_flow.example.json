@@ -1,4 +1,5 @@
 {
+  "strategy_version": "v1",
   "bar_minutes": 5,
   "transaction_alignment": "auto",
   "volume_baseline_sessions": 30,

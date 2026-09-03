@@ -1,0 +1,45 @@
+{
+  "protocol": "easy_tdx.factor",
+  "registration": "import research.order_flow.easy_tdx_factor",
+  "factor": {
+    "name": "order_flow_v2_score",
+    "version": "order-flow-v2-score-1",
+    "category": "order_flow",
+    "description": "多尺度成交压力、冲击效率、吸收、状态一致性和流价背离的复合分数",
+    "strategy_version": "v2",
+    "inputs": [
+      "v2_flow_pressure",
+      "v2_execution_quality",
+      "v2_absorption_score",
+      "v2_regime_alignment",
+      "v2_divergence_score",
+      "v2_large_flow_score"
+    ],
+    "formula": "mean(v2_flow_pressure, v2_execution_quality, v2_absorption_score, v2_regime_alignment, v2_divergence_score, v2_large_flow_score) with at least v2_min_component_count available components (2-6; default 3)",
+    "range": [-1.0, 1.0],
+    "bar_semantics": "current completed-bar causal order-flow evidence",
+    "feature_version": "order-flow-proxy-2-features",
+    "minimum_component_parameter": "v2_min_component_count (2-6)",
+    "strength_component_count": 5,
+    "missing_policy": "invalid rows or fewer than the minimum available components remain NaN",
+    "identity_limit": "aggregated transaction proxies; does not identify accounts or institutions"
+  },
+  "output_contract": {
+    "daily": [
+      "date",
+      "code",
+      "symbol",
+      "datetime",
+      "order_flow_v2_score"
+    ],
+    "bar": [
+      "date",
+      "code",
+      "symbol",
+      "datetime",
+      "order_flow_v2_score"
+    ],
+    "date": "YYYYMMDD integer",
+    "code": "six-digit string"
+  }
+}
