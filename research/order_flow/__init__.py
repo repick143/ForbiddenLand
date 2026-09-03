@@ -42,15 +42,37 @@ _LAZY_FACTOR_EXPORTS = {
     "factor_definition",
     "save_easy_tdx_factor_bundle",
 }
+_LAZY_PREDICTION_EXPORTS = {
+    "DEFAULT_FACTOR_LAGS",
+    "DEFAULT_PREDICTION_FEATURES",
+    "PREDICTION_VERSION",
+    "OrderFlowPredictionConfig",
+    "OrderFlowPredictionResult",
+    "PredictionTarget",
+    "RidgeReturnModel",
+    "apply_prediction_signals",
+    "build_prediction_frame",
+    "factor_event_study",
+    "fit_predict_latest",
+    "run_prediction_backtest",
+    "summarize_predictions",
+    "walk_forward_predict",
+}
 
 
 def __getattr__(name: str) -> Any:
-    """Load the optional easy-tdx factor API only when a caller requests it."""
+    """Load optional factor and prediction APIs only when a caller requests them."""
 
     if name in _LAZY_FACTOR_EXPORTS:
         from . import easy_tdx_factor
 
         value = getattr(easy_tdx_factor, name)
+        globals()[name] = value
+        return value
+    if name in _LAZY_PREDICTION_EXPORTS:
+        from . import predict
+
+        value = getattr(predict, name)
         globals()[name] = value
         return value
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
@@ -59,9 +81,12 @@ def __getattr__(name: str) -> Any:
 __all__ = [
     "BS_FLAG_DIRECTION",
     "BS_FLAG_LABEL",
+    "DEFAULT_FACTOR_LAGS",
+    "DEFAULT_PREDICTION_FEATURES",
     "EASY_TDX_FACTOR_NAME",
     "EASY_TDX_FACTOR_VERSION",
     "ORDER_FLOW_VERSION",
+    "PREDICTION_VERSION",
     "EasyTdxCollector",
     "EasyTdxOrderFlowSnapshot",
     "ExecutionMode",
@@ -70,20 +95,28 @@ __all__ = [
     "OrderFlowBacktestResult",
     "OrderFlowConfig",
     "OrderFlowDeltaRatio",
+    "OrderFlowPredictionConfig",
+    "OrderFlowPredictionResult",
     "OrderFlowStrategy",
     "PositionMode",
+    "PredictionTarget",
     "RejectPolicy",
+    "RidgeReturnModel",
     "SignalPath",
     "TransactionAlignment",
     "TransactionPageAudit",
     "UnknownDirectionPolicy",
     "aggregate_transactions_to_bars",
+    "apply_prediction_signals",
     "build_easy_tdx_factor_frame",
+    "build_prediction_frame",
     "classify_session",
     "compute_order_flow_factor",
     "compute_order_flow_features",
     "ensure_order_flow_factor_registered",
     "factor_definition",
+    "factor_event_study",
+    "fit_predict_latest",
     "make_order_flow_strategy",
     "normalize_bar_frame",
     "normalize_transaction_frame",
@@ -91,7 +124,10 @@ __all__ = [
     "prepare_backtest_frame",
     "resolve_transaction_alignment",
     "run_order_flow_backtest",
+    "run_prediction_backtest",
     "save_easy_tdx_factor_bundle",
     "session_bar_mask",
     "summarize_order_flow",
+    "summarize_predictions",
+    "walk_forward_predict",
 ]

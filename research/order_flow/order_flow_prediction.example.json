@@ -1,0 +1,26 @@
+{
+  "bar_minutes": 5,
+  "horizon_bars": 3,
+  "train_sessions": 60,
+  "validation_sessions": 10,
+  "test_sessions": 5,
+  "min_train_rows": 100,
+  "ridge_alpha": 10.0,
+  "round_trip_cost": 0.002,
+  "edge_buffer": 0.0005,
+  "threshold_grid": [0.0025, 0.003, 0.004],
+  "min_validation_signals": 5,
+  "factor_column": "order_flow_delta_ratio",
+  "factor_lags": [1, 2, 3, 5],
+  "feature_columns": [
+    "order_flow_delta_ratio",
+    "delta_ratio_zscore",
+    "relative_transaction_volume",
+    "clv",
+    "bar_return",
+    "vwap_distance",
+    "flow_price_divergence"
+  ],
+  "require_history_ready": true,
+  "target": "same_segment_open"
+}

@@ -292,6 +292,30 @@ focused on durable engineering constraints. Add project-specific rules as the co
   marked to market and called out in the report; single-symbol results require an independent
   source and out-of-sample validation and are research output, not investment advice.
 
+### order-flow future-return prediction
+
+- Status: implemented in `research/order_flow/predict.py`; the CLI entry point is
+  `python -m research.order_flow.predict`, and the Python API exposes target construction,
+  factor-bucket event studies, walk-forward Ridge estimates, latest-session scoring, and a
+  prediction-to-backtest adapter.
+- Target boundary: a feature observed at bar close is labeled with next-open to future-open return
+  within the same continuous morning or afternoon segment. Missing bars, invalid order-flow rows,
+  unavailable history, and incomplete future windows remain visible with eligibility flags and an
+  invalid reason; no label crosses lunch, overnight, or a timestamp gap.
+- Evaluation boundary: training, validation, and test sessions are chronological; labels ending at
+  the next window are purged; imputation and standardization are fit inside each training window;
+  validation-only threshold selection is optional. The latest-session mode permits an unavailable
+  future label for current feature scoring, while historical backtests require an available label
+  before mapping predictions to `of_entry_signal`/`of_exit_signal`.
+- Data and model limits: the output is an expected-return estimate from a NumPy/Pandas Ridge model,
+  not an automatically calibrated probability or a complete order-flow observation. Costs and edge
+  buffers are explicit parameters, and single-symbol or short-window results require independent,
+  out-of-sample validation; insufficient sessions are reported rather than silently filled.
+- Verification: prediction unit tests cover target/session boundaries, gaps, missing values,
+  train-only preprocessing, walk-forward folds, latest scoring, CLI provenance, and simulator
+  compatibility; the complete project test, format, lint, compile, and diff checks are the release
+  gate.
+
 ## Git Discipline
 
 - Inspect `git status` and the complete diff before committing.

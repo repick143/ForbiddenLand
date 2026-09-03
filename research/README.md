@@ -19,8 +19,10 @@ without coupling unrelated studies.
   exposes configurable signal, timestamp-alignment, and execution parameters, and runs the easy-tdx
   backtest simulator. It also registers and saves the `order_flow_delta_ratio` custom factor using
   easy-tdx's `Factor` protocol; daily exports use the `date`/`code` long format expected by
-  `FactorAnalyzer`. Its `auto` alignment records whether the observed endpoint is left- or
-  right-labelled. It does not claim complete Level-2 order events or institutional identity.
+  `FactorAnalyzer`. Its prediction experiment adds causal future-return labels, factor-bin event
+  studies, rolling Ridge expected-return estimates, and a prediction-to-backtest adapter. Its
+  `auto` alignment records whether the observed endpoint is left- or right-labelled. It does not
+  claim complete Level-2 order events or institutional identity.
 - [`technical_analysis/`](technical_analysis/): a reproducible multi-timeframe technical-analysis
   generator for 生益电子 (`688183`), 生益科技 (`600183`), 甬矽电子 (`688362`), 云南锗业 (`002428`),
   晓程科技 (`300139`), 行云科技 (`300209`), 景旺电子 (`603228`) and 超纯应材 (`301717`). It

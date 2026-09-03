@@ -200,6 +200,80 @@ must be explicitly aggregated by session before daily cross-sectional IC or quan
 The manifest records the actual file format/path, factor contract, source host, retrieval time,
 period, timestamp convention, volume units, and missing-value count.
 
+## Future-return prediction experiment
+
+The factor is an input to a prediction experiment, not a prediction by itself.  The first version
+is implemented in [`predict.py`](predict.py) and consumes the feature CSV produced by the main
+runner.  It has three explicit stages:
+
+```text
+causal feature at bar close
+  -> next-open/future-open label within one continuous session
+  -> factor quantile event study and rolling Ridge expected-return estimate
+```
+
+Generate a bar-level feature file first, then run a chronological walk-forward experiment:
+
+```bash
+.venv/bin/python -m research.order_flow.run \
+  --source live \
+  --symbol SH:688183 \
+  --bar-minutes 5 \
+  --factor-frequency bar \
+  --features reports/order_flow_688183_features.csv \
+  --factor-output reports/order_flow_688183_factor_bar.parquet \
+  --report reports/order_flow_688183.json
+
+.venv/bin/python -m research.order_flow.predict \
+  --features reports/order_flow_688183_features.csv \
+  --source-report reports/order_flow_688183.json \
+  --config research/order_flow/order_flow_prediction.example.json \
+  --output reports/order_flow_688183_predictions.csv \
+  --report reports/order_flow_688183_predictions.json
+```
+
+Use `--latest` on the second command to fit on completed prior sessions and score the latest
+session, whose future label is naturally unavailable.  Historical backtests must use the default
+walk-forward mode so the test labels never influence a fitted model.
+
+For a signal at bar `t` observed at the close, with `next_open` execution, the default target is:
+
+```text
+r(t, h) = open(t+h+1) / open(t+1) - 1
+```
+
+`horizon_bars` counts bars, not calendar days.  The implementation rejects missing intermediate
+timestamps and never crosses the lunch break or overnight boundary.  Rows failing
+`of_data_valid`, `of_history_ready`, or the future-window check remain in the output with an
+explicit eligibility flag and reason rather than being filled with zero.
+
+The model uses the available subset of these causal columns:
+`order_flow_delta_ratio`, `delta_ratio_zscore`, `relative_transaction_volume`, `clv`,
+`bar_return`, `vwap_distance`, and `flow_price_divergence`, plus configurable lags of the order-flow
+factor.  Imputation and standardization are fitted inside each training window.  Training,
+validation, and test windows are ordered by trading date; labels that end at or after the next
+window are purged.  `threshold_grid` is selected on validation data only, while
+`round_trip_cost` and `edge_buffer` must be set from the intended fee/slippage assumptions.
+
+The prediction output adds `future_return`, `predicted_return`, `prediction_signal`,
+`prediction_threshold`, `prediction_fold`, and `prediction_train_rows`.  `prediction_signal` is a
+research entry candidate based on expected return.  To run it through the existing fee- and
+T+1-aware simulator in Python:
+
+```python
+from research.order_flow.predict import run_prediction_backtest, walk_forward_predict
+
+predictions = walk_forward_predict(features, config=prediction_config)
+backtest = run_prediction_backtest(predictions.frame, config=order_flow_config)
+```
+
+`run_prediction_backtest` masks incomplete historical labels and maps the model output to the
+existing order-flow strategy.  It does not make a short intraday label executable under A-share
+T+1; a short horizon can still be useful as a signal diagnostic, while the actual strategy must
+respect sellability, fees, lot size, stops, and holding limits.  Single-symbol three-month runs
+are pipeline checks, not evidence of a stable edge.  For cross-sectional IC, export daily factors
+for multiple symbols and define the universe and date-level ranking before fitting.
+
 ## Interpretation and limitations
 
 Positive Delta with a positive bar response is consistent with active demand.  Large positive Delta
