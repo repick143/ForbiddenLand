@@ -8,7 +8,7 @@ simulation.
 ## What the feed can and cannot say
 
 `transaction` returns aggregated trade prints with `time`, `price`, `vol`, `trade_count`, and
-`bs_flag`.  In the installed `easy-tdx==1.28.1` route, `bs_flag` is interpreted as `0=buy
+`bs_flag`.  In the installed `easy-tdx==1.30.3` route, `bs_flag` is interpreted as `0=buy
 direction`, `1=sell direction`, `2=neutral`, and `5=after-hours`.  `vol` is converted from the
 protocol lot unit to shares with a configurable, audited factor (100 by default).  These are
 aggressor-side direction proxies, not order IDs, account identities, or a complete Level-2 order
@@ -121,7 +121,7 @@ The most useful controls are:
 
 The defaults are research starting points, not fitted values.  Keep a calibration period and an
 untouched out-of-sample period when tuning them.  The simulator uses 100-share lots in
-`easy-tdx==1.28.1`; the configuration rejects a different lot size rather than silently claiming
+`easy-tdx==1.30.3`; the configuration rejects a different lot size rather than silently claiming
 unsupported behavior.  `min_transaction_coverage` and `min_large_trade_share` are disabled at
 zero; `max_*` and Z-score filters are disabled at `None`.  `entry_price_return` and VWAP distances
 are signed, so a negative entry threshold can deliberately test a demand response during a
@@ -160,7 +160,7 @@ signal definition.
 
 ## easy-tdx custom factor
 
-`easy-tdx==1.28.1` exposes custom factors through the `Factor`/`register_factor` protocol.  The
+`easy-tdx==1.30.3` exposes custom factors through the `Factor`/`register_factor` protocol.  The
 project registers `order_flow_delta_ratio` when `research.order_flow.easy_tdx_factor` is imported:
 
 ```python
@@ -182,7 +182,7 @@ It has no hidden scoring weights.  Missing transaction rows and rows rejected by
 `of_data_valid` remain `NaN`, and the input frequency is supplied by the caller.  The definition
 is also kept in [`order_flow_factor.json`](order_flow_factor.json).
 
-The registry is process-local; easy-tdx 1.28.1 has no factor database or automatic project-module
+The registry is process-local; easy-tdx 1.30.3 has no factor database or automatic project-module
 discovery.  The runner therefore writes both a factor table and a manifest:
 
 ```bash

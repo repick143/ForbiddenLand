@@ -145,7 +145,7 @@ class EasyTdxCollector:
         except ImportError as exc:  # pragma: no cover - depends on installation profile.
             raise RuntimeError(
                 "easy-tdx is required for live order-flow collection; install "
-                'with `python -m pip install "easy-tdx==1.28.1"`'
+                'with `python -m pip install "easy-tdx==1.30.3"`'
             ) from exc
         return Market, Period, Adjust
 
@@ -172,7 +172,7 @@ class EasyTdxCollector:
                 from easy_tdx import MacClient
             except ImportError as exc:  # pragma: no cover
                 raise RuntimeError(
-                    "easy-tdx is required for live order-flow collection; install easy-tdx==1.28.1"
+                    "easy-tdx is required for live order-flow collection; install easy-tdx==1.30.3"
                 ) from exc
             created = MacClient(host=host, timeout=self.timeout)
         if hasattr(created, "__enter__"):

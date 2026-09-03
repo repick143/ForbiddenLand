@@ -6,11 +6,13 @@ Always state the input frequency and the warmup window.
 
 ## Technical Indicators
 
-The installed 1.28.1 registry contains 34 indicators:
+The installed 1.30.3 registry contains 50 indicators:
 
-`MACD`, `RSI`, `BOLL`, `BIAS`, `BIAS_SIGNAL`, `KDJ`, `DMI`, `ATR`, `WR`, `CCI`, `OBV`, `VR`,
-`EMV`, `MFI`, `BRAR`, `ASI`, `TRIX`, `DPO`, `MTM`, `ROC`, `EXPMA`, `BBI`, `PSY`, `DFMA`, `CR`,
-`KTN`, `XSII`, `MASS`, `TAQ`, `ZHUOYAO`, `SAR`, `VWAP`, `AROON`, and `FK`.
+`MACD`, `RSI`, `BOLL`, `BIAS`, `PSY`, `TRIX`, `DPO`, `MTM`, `ROC`, `EXPMA`, `BBI`, `DFMA`,
+`KDJ`, `DMI`, `ATR`, `WR`, `CCI`, `CR`, `KTN`, `XSII`, `OBV`, `VR`, `EMV`, `MASS`, `MFI`,
+`BRAR`, `ASI`, `ZHUOYAO`, `BIAS_SIGNAL`, `TAQ`, `SAR`, `VWAP`, `AROON`, `FK`, `SUPERTREND`,
+`CHANDELIER`, `HMA`, `KAMA`, `ICHIMOKU`, `UOS`, `CMO`, `TSI`, `FISHER`, `SQUEEZE`, `CHOP`,
+`BBP`, `BBW`, `AD`, `CMF`, and `EFI`.
 
 Use the binary for ordinary requests:
 
@@ -82,7 +84,7 @@ For factor validity, calculate forward returns from the same time-aligned datase
 IC, quantile returns, top-minus-bottom, turnover, and decay. The default Spearman IC path needs
 SciPy (`easy-tdx[science]`); use Pearson only when that methodological change is intentional.
 
-The documentation example is ahead of the installed API in two places. In 1.28.1 use:
+The documentation example is ahead of the installed API in two places. In 1.30.3 use:
 
 ```python
 from easy_tdx.factor import FactorAnalyzer

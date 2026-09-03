@@ -24,7 +24,7 @@ The project-local installation is reproducible with:
 
 ```bash
 python scripts/bootstrap.py --profile data
-.venv/bin/python -m pip install "easy-tdx==1.28.1"
+.venv/bin/python -m pip install "easy-tdx==1.30.3"
 ```
 
 Use the repository's Python interpreter explicitly. The distribution is named `easy-tdx`, while

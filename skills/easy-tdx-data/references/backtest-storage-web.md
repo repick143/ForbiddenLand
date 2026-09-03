@@ -11,7 +11,7 @@ The binary accepts a Python strategy file with `init()` and `next()` methods:
 easy-tdx backtest SH 600183 --strategy-file strategies/macd_cross.py --count 800 --adjust QFQ
 ```
 
-In 1.28.1, `--strategy-file` loads a Python `Strategy` subclass; `--strategy` is a reserved DSL
+In 1.30.3, `--strategy-file` loads a Python `Strategy` subclass; `--strategy` is a reserved DSL
 option and currently reports that the DSL path is not implemented. Inspect
 `easy-tdx backtest --help` again after upgrading. The Python API is more stable for controlled
 research:
@@ -63,7 +63,7 @@ the file dates before using it.
 Install the optional warehouse dependency in a fresh environment:
 
 ```bash
-python -m pip install "easy-tdx[warehouse]==1.28.1"
+python -m pip install "easy-tdx[warehouse]==1.30.3"
 ```
 
 Typical commands:
@@ -91,7 +91,7 @@ source is unavailable.
 The optional Web extra provides FastAPI/Uvicorn:
 
 ```bash
-python -m pip install "easy-tdx[web]==1.28.1"
+python -m pip install "easy-tdx[web]==1.30.3"
 easy-tdx serve --host 127.0.0.1 --port 8000 --no-open-browser
 ```
 

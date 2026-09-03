@@ -10,7 +10,7 @@ From the repository root:
 
 ```bash
 python scripts/bootstrap.py --profile data
-.venv/bin/python -m pip install "easy-tdx==1.28.1"
+.venv/bin/python -m pip install "easy-tdx==1.30.3"
 .venv/bin/python -m pip check
 ```
 
@@ -38,9 +38,9 @@ The distribution is `easy-tdx`; the import name is `easy_tdx`. Install optional 
 capability you need:
 
 ```bash
-.venv/bin/python -m pip install "easy-tdx[science]==1.28.1"   # Spearman IC
-.venv/bin/python -m pip install "easy-tdx[warehouse]==1.28.1" # DuckDB warehouse
-.venv/bin/python -m pip install "easy-tdx[web]==1.28.1"      # FastAPI/Uvicorn/UI
+.venv/bin/python -m pip install "easy-tdx[science]==1.30.3"   # Spearman IC
+.venv/bin/python -m pip install "easy-tdx[warehouse]==1.30.3" # DuckDB warehouse
+.venv/bin/python -m pip install "easy-tdx[web]==1.30.3"      # FastAPI/Uvicorn/UI
 ```
 
 The package requires `pandas>=2,<3`. A fresh project environment may therefore need pandas 2.x;

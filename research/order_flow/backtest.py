@@ -33,7 +33,7 @@ def _numeric_time_key(value: Any) -> int:
 def prepare_backtest_frame(frame: pd.DataFrame) -> pd.DataFrame:
     """Prepare numeric columns for easy-tdx's StrategyDataProxy.
 
-    easy-tdx 1.28.1 normalizes a datetime-like column to ``YYYYMMDD`` internally.  That is correct
+    easy-tdx 1.30.3 normalizes a datetime-like column to ``YYYYMMDD`` internally.  That is correct
     for daily data but collapses every intraday bar of one day to one key.  We pass a unique numeric
     ``YYYYMMDDHHMM`` execution key and retain the real timestamp in the caller's feature frame.
     """
@@ -253,7 +253,7 @@ def run_order_flow_backtest(
         from easy_tdx.backtest import BacktestEngine
     except ImportError as exc:  # pragma: no cover
         raise RuntimeError(
-            "easy-tdx is required for the backtest; install easy-tdx==1.28.1"
+            "easy-tdx is required for the backtest; install easy-tdx==1.30.3"
         ) from exc
     symbol = str(features["symbol"].iloc[0])
     strategy = make_order_flow_strategy(settings)

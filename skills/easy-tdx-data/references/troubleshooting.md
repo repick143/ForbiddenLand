@@ -9,7 +9,7 @@ Preferred project-local setup:
 
 ```bash
 python scripts/bootstrap.py --profile data
-.venv/bin/python -m pip install "easy-tdx==1.28.1"
+.venv/bin/python -m pip install "easy-tdx==1.30.3"
 .venv/bin/python -m pip check
 .venv/bin/easy-tdx --version
 ```
@@ -84,7 +84,7 @@ known.
 
 ## Documentation/API Mismatches
 
-The installed 1.28.1 implementation should be treated as authoritative when an example conflicts:
+The installed 1.30.3 implementation should be treated as authoritative when an example conflicts:
 
 - `FactorAnalyzer.full_report()` takes no factor-name argument; select `factor_col` in the
   constructor instead.

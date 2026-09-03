@@ -273,10 +273,10 @@ class OrderFlowConfig:
             raise ValueError("fixed order_size must be a positive multiple of lot_size")
         if self.position_mode == "percent" and not 0.0 < self.position_fraction <= 1.0:
             raise ValueError("position_fraction must be in (0, 1] for percent mode")
-        # easy-tdx 1.28.1's OrderSimulator rounds to 100-share lots internally.  Rejecting another
+        # easy-tdx 1.30.3's OrderSimulator rounds to 100-share lots internally.  Rejecting another
         # value prevents a report from claiming a lot-size assumption the engine cannot honor.
         if self.lot_size != 100:
-            raise ValueError("easy-tdx 1.28.1 backtest execution requires lot_size=100")
+            raise ValueError("easy-tdx 1.30.3 backtest execution requires lot_size=100")
         if self.execution not in {"next_open", "next_close"}:
             raise ValueError("execution must be next_open or next_close")
         if self.reject_policy not in {"reduce", "skip"}:
