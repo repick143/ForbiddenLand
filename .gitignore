@@ -31,6 +31,7 @@ data/raw/
 data/processed/
 data/cache/
 reports/
+analysis_history/
 
 # Frontend dependencies and build output
 node_modules/
