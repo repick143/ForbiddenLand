@@ -17,6 +17,10 @@ focused on durable engineering constraints. Add project-specific rules as the co
   configuration.
 - The repository development baseline is Python 3.12.10. Run `python scripts/bootstrap.py` to
   create or initialize the local environment.
+- The project-local virtual environment is `.venv` (created by `python scripts/bootstrap.py`);
+  use it for development, testing, and dependency installation.
+- Never fall back to a global or system interpreter; invoke Python through `.venv/bin/python`
+  or `sys.executable`.
 - On Ubuntu, the default `full` profile also initializes `frontend/node_modules` with the tracked
   `package-lock.json` (`npm ci`). Use `--skip-frontend` only when a Python-only environment is
   intentional; the frontend requires Node `22.14.x` and npm.
