@@ -132,6 +132,30 @@ bash scripts/start.sh --api-port 9093
 
 ## 功能记录
 
+### Markdown 文档浏览器（已实现）
+
+- 入口：在仓库根目录执行
+  `npx --yes markserv@1.21.1 . --port 8642 --no-browser`，然后访问
+  `http://localhost:8642/`。`markserv` 会索引当前目录及子目录中的 Markdown 文件，按 GitHub
+  风格渲染，并在文件修改后自动刷新。
+- 其他设备：同一可信局域网内可改用
+  `npx --yes markserv@1.21.1 . --port 8642 --no-browser --address 0.0.0.0`，再通过
+  `http://<本机局域网 IP>:8642/` 访问；Ubuntu 可使用 `hostname -I` 查询地址。更安全的远程
+  方式是在服务端保持默认监听，并在客户端建立 SSH 隧道：
+
+  ```bash
+  ssh -N -L 8642:127.0.0.1:8642 <user>@<server>
+  ```
+
+  随后在客户端打开 `http://localhost:8642/`。
+- 边界：工具通过 `npx` 临时运行，不写入项目依赖，也不读取 DuckDB、Parquet 或行情 provider。
+  首次运行需要 Node/npm 和网络下载，之后使用 npm 缓存；服务没有访问认证，并会向客户端暴露
+  所服务的仓库目录。只能用于可信局域网或 SSH 隧道，不得直接暴露到公网。
+- 验证：Markserv `1.21.1` 已在仓库根目录验证本地目录索引和 Markdown 渲染，并确认
+  `--address 0.0.0.0` 可供局域网设备访问。
+- 限制：当前记录的是开发期临时浏览方式，不是 production 文档站点；可按 `Ctrl+C` 停止，
+  或使用不同端口避免与前后端开发服务冲突。
+
 ### 开发环境初始化与服务启动（已实现）
 
 - 入口：`scripts/bootstrap.py` 初始化 Python、数据目录和（默认 `full` profile）前端 npm
