@@ -17,6 +17,10 @@ For the first planned experiment (a next-day direction baseline with strict A-sh
 rules), see [`baseline_plan.md`](baseline_plan.md). It currently contains the approach and open
 decision points only; implementation details come after the approach is confirmed.
 
+For a from-scratch introduction to the baseline model family (what XGBoost is, which APIs matter,
+the end-to-end training workflow, and the problems that must be solved before it can be used on
+stock data), see [`xgboost-intro.md`](xgboost-intro.md).
+
 For paper reading notes, see [`kit_2609.34507_notes.md`](kit_2609.34507_notes.md) (KiT, a
 diffusion-Transformer financial time-series foundation model) and
 [`frontier_overview.md`](frontier_overview.md) for the wider 2024-2026 landscape.
