@@ -337,12 +337,13 @@ focused on durable engineering constraints. Add project-specific rules as the co
 
 ### ecom-data cache layer skill
 
-- Status: implemented as `skills/ecom-data/`; the stable CLI entry point is
-  the directly executable `skills/ecom-data/scripts/ecom-data` (or
-  `python -m ecom_data` with `PYTHONPATH=skills/ecom-data/scripts`). Code may
-  import the same layer with `sys.path` pointing at
-  `skills/ecom-data/scripts` and `from ecom_data import EcomData, BarRequest,
-  QuoteRequest`; see `skills/ecom-data/examples/usage.py`.
+- Status: implemented as the library `src/ecom_data` (installed by
+  `python -m pip install -e ".[dev,data]"`, which registers the `ecom-data`
+  console script via `pyproject.toml` `[project.scripts]`). The skill
+  `skills/ecom-data/` is documentation plus a thin launcher
+  (`skills/ecom-data/scripts/ecom-data`) that delegates to the installed
+  library; code uses `from ecom_data import EcomData, BarRequest, QuoteRequest`
+  directly (see `skills/ecom-data/examples/usage.py`).
   `scripts/install_local_skills.py` links the skill into `$CODEX_HOME/skills`
   together with `easy-tdx-data`.
 - Interface contract: subcommands `bars`, `quote`, `stats`, `clear`, `sources`,
@@ -358,9 +359,10 @@ focused on durable engineering constraints. Add project-specific rules as the co
   DuckDB remains the project's analytical store.
 - Data-source boundary: `ecom_data.sources.DataSource` with
   `fetch_bars`/`fetch_quote`; `easy-tdx` is the only bundled adapter and talks
-  to the wrapped easy-tdx binary. New backends implement the interface and call
-  `register_source`, or load out-of-tree via `ECOM_DATA_PLUGIN_FILE`; no CLI or
-  storage change is required to switch sources.
+  to the wrapped easy-tdx binary. New backends implement the interface in
+  `src/ecom_data/sources/` and call `register_source`, or load out-of-tree via
+  `ECOM_DATA_PLUGIN_FILE`; no CLI or storage change is required to switch
+  sources.
 - Verification: offline tests in `tests/test_ecom_data.py` cover cache-through,
   coverage growth, TTL expiry, quote caching, source isolation, stats/clear,
   request validation, and CLI source selection; live easy-tdx fetch is a smoke

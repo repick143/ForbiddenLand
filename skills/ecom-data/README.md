@@ -4,6 +4,10 @@ Cache-through securities data layer for ForbiddenLand. Reads local SQLite first,
 fetches from a registered data source on a miss, and writes back. The script
 interface is source-agnostic; easy-tdx is the bundled backend today.
 
+The library lives at `src/ecom_data` (import `ecom_data`, or use the
+`ecom-data` console command from the project `.venv`). This skill only
+references it; see `SKILL.md` for the contract.
+
 ## Quick Start
 
 ```bash
@@ -27,26 +31,28 @@ skills/ecom-data/scripts/ecom-data clear --source easy-tdx --yes
 
 ## Direct Execution and Code Usage
 
-The CLI script is directly executable (no `python -m` prefix, works from any
-working directory):
+The skill launcher is directly executable (no `python -m` prefix, works from
+any working directory); it delegates to the installed library:
 
 ```bash
 skills/ecom-data/scripts/ecom-data bars SH 600183 --adjust QFQ --count 3 --table
 ```
 
-To use the cache layer inside your own Python code:
+The installed console command works the same way from any repo code:
+
+```bash
+ecom-data bars SH 600183 --adjust QFQ --count 3 --table   # from .venv
+```
+
+Inside your own Python code, import the installed package directly:
 
 ```python
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path("skills/ecom-data/scripts").resolve()))
-
 from ecom_data import BarRequest, EcomData, QuoteRequest
 
 with EcomData() as svc:  # default db: data/cache/ecom_data.db, source: easy-tdx
     result = svc.get_bars(BarRequest("SH", "600183", adjust="QFQ", count=30))
 ```
 
-See `SKILL.md` for the full contract, cache semantics, provenance rules, and
-`examples/usage.py` for a runnable demo of both styles.
+Requires the library installed: `python -m pip install -e ".[dev,data]"`
+(registers `ecom_data` and the `ecom-data` console script). See `SKILL.md`
+for the full contract and `examples/usage.py` for a runnable demo.

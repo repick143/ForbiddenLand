@@ -13,6 +13,9 @@ dependencies = [
     "akquant>=0.3.52,<0.4",
 ]
 
+[project.scripts]
+ecom-data = "ecom_data.cli:main"
+
 [project.optional-dependencies]
 data = [
     "akshare>=1.18,<2",

@@ -1,4 +1,4 @@
-"""Path and environment configuration for the ecom-data skill."""
+"""Path and environment configuration for the ecom-data library."""
 
 from __future__ import annotations
 
@@ -6,9 +6,18 @@ import os
 from pathlib import Path
 
 PACKAGE_DIR = Path(__file__).resolve().parent
-SCRIPTS_DIR = PACKAGE_DIR.parent
-SKILL_DIR = SCRIPTS_DIR.parent
-PROJECT_ROOT = PACKAGE_DIR.parents[3]
+
+
+def _find_repo_root(start: Path) -> Path:
+    """Walk upward from the package until the repository root (.git) is found."""
+
+    for candidate in (start, *start.parents):
+        if (candidate / ".git").exists():
+            return candidate
+    return start.parents[2]
+
+
+PROJECT_ROOT = _find_repo_root(PACKAGE_DIR)
 
 
 def default_db_path() -> Path:

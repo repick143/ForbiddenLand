@@ -22,7 +22,8 @@ metadata:
 Cache-through securities data layer: reads local SQLite first, fetches from a
 registered data source on a miss, and writes the result back. The script
 interface is source-agnostic; only `--source` selects the backend. easy-tdx is
-the only bundled source today.
+the only bundled source today. The library lives in the repository at
+`src/ecom_data`; this skill only documents and references it.
 
 ## Step 1: Detect the Runtime
 
@@ -71,11 +72,11 @@ fetch. Keep this provenance visible in answers.
 
 ## Step 3: Call It Directly (CLI) and From Code (Python API)
 
-**Directly executable:** `skills/ecom-data/scripts/ecom-data` is a real
-executable script (`#!/usr/bin/env bash` + `chmod +x`). Run it with a plain
-path, no `python -m` prefix, from any working directory. It resolves the
-repository root itself (including when reached through a `$CODEX_HOME`
-symlink) and uses the project `.venv`:
+**Directly executable:** `skills/ecom-data/scripts/ecom-data` is a thin
+launcher that references the installed library. Run it with a plain path, no
+`python -m` prefix, from any working directory; it prefers the `.venv` console
+script `ecom-data` and falls back to `python -m ecom_data`. The repository
+root is resolved even when reached through a `$CODEX_HOME` symlink:
 
 ```bash
 skills/ecom-data/scripts/ecom-data bars SH 600183 --adjust QFQ --count 3
@@ -84,16 +85,11 @@ skills/ecom-data/scripts/ecom-data bars SH 600183 --adjust QFQ --count 3
 If `.venv` is missing it prints the bootstrap hint instead of falling back to
 a global interpreter.
 
-**Python API in your own code:** the package lives under
-`skills/ecom-data/scripts`, so add that directory to `sys.path` (or set
-`PYTHONPATH`) once, then import the facade:
+**Python API in your own code:** the library is a regular repository package
+under `src/ecom_data` and is installed by `python -m pip install -e ".[dev,data]"`.
+Import it directly, no `sys.path` tricks:
 
 ```python
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path("<repo>") / "skills" / "ecom-data" / "scripts"))
-
 from ecom_data import BarRequest, EcomData, QuoteRequest
 
 with EcomData(db_path=Path("data/cache/ecom_data.db")) as svc:
@@ -137,14 +133,15 @@ with EcomData(db_path=Path("data/cache/ecom_data.db")) as svc:
 
 The interface and storage are fixed; only the backend changes.
 
-1. Create `skills/ecom-data/scripts/ecom_data/sources/<name>.py`.
+1. Create `src/ecom_data/sources/<name>.py` in the library package.
 2. Implement `DataSource` (`fetch_bars`, `fetch_quote`; optional `ping` and
    `source_version`), then `register_source(MySource())`. See
    `references/design.md` for the template.
 3. Optional out-of-tree backend: a module exposing `register()` can be loaded
    via `ECOM_DATA_PLUGIN_FILE` without touching the skill package.
 4. No CLI, request-model, or storage change is required; `--source <name>`
-   selects the new backend.
+   selects the new backend. New console entry points, if ever needed, are
+   declared in `pyproject.toml` `[project.scripts]`.
 
 ## Environment Variables
 

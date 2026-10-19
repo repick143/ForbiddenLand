@@ -7,18 +7,14 @@ Usage:
 from __future__ import annotations
 
 import subprocess
-import sys
 from pathlib import Path
+
+from ecom_data import BarRequest, EcomData, QuoteRequest
 
 REPO = Path(__file__).resolve().parents[3]
 PYTHON = REPO / ".venv" / "bin" / "python"
 CLI = REPO / "skills" / "ecom-data" / "scripts" / "ecom-data"
-SCRIPTS = REPO / "skills" / "ecom-data" / "scripts"
 DB = Path("/tmp/ecom-data-example.db")
-
-sys.path.insert(0, str(SCRIPTS))
-
-from ecom_data import BarRequest, EcomData, QuoteRequest
 
 
 def cli_style() -> None:
