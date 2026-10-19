@@ -1,4 +1,4 @@
-# ecom-data Design Notes
+# line-fetcher Design Notes
 
 ## Goals
 
@@ -8,11 +8,11 @@
 
 ## Layout
 
-The library is a normal repository package at `src/ecom_data` and is installed
+The library is a normal repository package at `src/line_fetcher` and is installed
 with the project (`python -m pip install -e ".[dev,data]"`), which registers
-the `ecom-data` console script (`pyproject.toml` `[project.scripts]`). The
-`skills/ecom-data` directory is documentation plus a thin launcher
-(`scripts/ecom-data`) that delegates to the installed library; it contains no
+the `line-fetcher` console script (`pyproject.toml` `[project.scripts]`). The
+`skills/line-fetcher` directory is documentation plus a thin launcher
+(`scripts/line-fetcher`) that delegates to the installed library; it contains no
 implementation code.
 
 ## Decisions
@@ -32,7 +32,7 @@ implementation code.
   same `BarRequest` contract; provider provenance (source/storage/retrieval
   time) is retained per symbol on `source.last_fetch` for report consumers.
 - **Library in `src/`, skill as a reference**: keeping implementation code in
-  `src/ecom_data` makes it importable from any repo code and console-ready via
+  `src/line_fetcher` makes it importable from any repo code and console-ready via
   `[project.scripts]`; the skill stays a thin, installable instruction set.
 - **Series-level bar keys**: a bar series is keyed by
   `(source, market, code, period, adjust, bar_time)` and stores the full
@@ -42,14 +42,14 @@ implementation code.
 - **TTL semantics**: default no expiry; `--ttl-seconds` enables freshness;
   `0` means no expiry. Expiry is checked against `fetched_at` (UTC ISO).
   `--refresh` forces a fetch regardless.
-- **Plugins**: `ECOM_DATA_PLUGIN_FILE` loads an external module exposing
+- **Plugins**: `LINE_FETCHER_PLUGIN_FILE` loads an external module exposing
   `register()`, letting custom backends live outside the skill package.
 
 ## Source Adapter Contract
 
 ```python
-from ecom_data.model import BarRequest, QuoteRequest
-from ecom_data.sources import DataSource, register_source
+from line_fetcher.model import BarRequest, QuoteRequest
+from line_fetcher.sources import DataSource, register_source
 
 
 class MySource(DataSource):
@@ -88,8 +88,8 @@ are lexicographic on the ISO string.
 ## Extending
 
 - New backend: add `sources/<name>.py` implementing `DataSource` and register
-  it; no CLI/storage change. Out-of-tree: plugin file + `ECOM_DATA_PLUGIN_FILE`.
+  it; no CLI/storage change. Out-of-tree: plugin file + `LINE_FETCHER_PLUGIN_FILE`.
 - New data kind (e.g. transactions): add a method to `DataSource`, a cache
   table, and a CLI subcommand; keep the source-agnostic request shape.
-- Always run `tests/test_ecom_data.py` and the full project checks before
+- Always run `tests/test_line_fetcher.py` and the full project checks before
   release; live fetches are smoke tests only.

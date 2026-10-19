@@ -5,8 +5,8 @@
 ## 当前实现部分
 
 - **目标**：次日 open→close 方向二分类（XGBoost）；信号 T 日收盘后产生、T+1 开盘成交（NextOpen），AKQuant 按 A 股规则严格回测。
-- **数据获取**：原始取数与归一化在 `src/ecom_data`；默认 `easy-tdx` source（easy-tdx Python 库
-  MacClient + SQLite 缓存 `data/cache/ecom_data.db`），可选 `akshare` source（包装
+- **数据获取**：原始取数与归一化在 `src/line_fetcher`；默认 `easy-tdx` source（easy-tdx Python 库
+  MacClient + SQLite 缓存 `data/cache/line_fetcher.db`），可选 `akshare` source（包装
   `AkShareMarketProvider`，含有限重试、腾讯兜底、`data/cache/akshare` 远程响应缓存）；本目录
   `data.py` 只做日期窗口与面板映射，并保留 source 溯源。
 - **特征**：14 个因果量价特征（`features.py`），只用 T 日收盘及之前信息。
@@ -67,7 +67,7 @@
 | `--symbols-file` | 股票池文件路径（与 `--symbols` 二选一） | 关闭 |
 | `--start-date` / `--end-date` | 数据窗口（`YYYYMMDD`） | `20190101` / `20261016` |
 | `--adjust` | 复权：`qfq` / `hfq` / `none` | `qfq` |
-| `--source` | ecom-data 数据源：`easy-tdx`（默认，快）或 `akshare`（远程 AkShare，带磁盘缓存） | `easy-tdx` |
+| `--source` | line-fetcher 数据源：`easy-tdx`（默认，快）或 `akshare`（远程 AkShare，带磁盘缓存） | `easy-tdx` |
 | `--bar-count` | 每只股票请求的最大 bar 数（easy-tdx QFQ 建议 2500，跳过深层历史重算；akshare 忽略） | `2500` |
 | `--train-end` / `--valid-end` | 训练/验证截止日（测试期 = valid-end 之后） | `20231231` / `20251231` |
 | `--seed` | 随机种子 | `42` |
@@ -83,7 +83,7 @@
 预测报告输出 `skipped` 段（例如 `601059` 在 TDX 无日线）；仅当全部标的都失败时才报错中断。
 
 **数据源**：默认 `easy-tdx`（easy-tdx Python 库，约 2s/只，330 只约 11 分钟；响应写入
-`data/cache/ecom_data.db` SQLite 缓存，复跑直接命中，不重复连 TDX）。QFQ 全量历史会触发
+`data/cache/line_fetcher.db` SQLite 缓存，复跑直接命中，不重复连 TDX）。QFQ 全量历史会触发
 easy-tdx 深层历史本地重算（老票 2005 年前后负价），默认 `--bar-count 2500` 只取近 10 年，覆盖
 2019 起的训练窗口并跳过大部分重算。需要远程 AkShare 时显式 `--source akshare`：
 

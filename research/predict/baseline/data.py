@@ -1,9 +1,9 @@
 """Daily-bar acquisition for the prediction baseline.
 
-Raw fetching and normalization live in ``src/ecom_data`` (the ``akshare`` source wraps the
+Raw fetching and normalization live in ``src/line_fetcher`` (the ``akshare`` source wraps the
 project's ``AkShareMarketProvider``, so bounded retries, the Tencent historical fallback, and the
 remote response cache apply). This module maps the baseline's date-windowed panel needs onto the
-ecom-data ``BarRequest`` contract and retains provider provenance in the batch.
+line-fetcher ``BarRequest`` contract and retains provider provenance in the batch.
 """
 
 from __future__ import annotations
@@ -15,9 +15,9 @@ from typing import Any
 
 import pandas as pd
 
-from ecom_data.model import BarRequest
-from ecom_data.sources import DataSource, get_source
-from ecom_data.sources.akshare import market_for_code
+from line_fetcher.model import BarRequest
+from line_fetcher.sources import DataSource, get_source
+from line_fetcher.sources.akshare import market_for_code
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
@@ -47,12 +47,12 @@ def _parse_date(value: str) -> date:
     return date.fromisoformat(f"{value[:4]}-{value[4:6]}-{value[6:]}")
 
 
-def _ecom_bars_to_frame(bars: list[dict[str, Any]], symbol: str) -> pd.DataFrame:
+def _bars_to_frame(bars: list[dict[str, Any]], symbol: str) -> pd.DataFrame:
     if not bars:
-        raise ValueError(f"ecom-data returned no bars for {symbol}")
+        raise ValueError(f"line-fetcher returned no bars for {symbol}")
     missing = sorted(_REQUIRED_KEYS - set(bars[0]))
     if missing:
-        raise ValueError(f"ecom-data bars for {symbol} are missing keys: {', '.join(missing)}")
+        raise ValueError(f"line-fetcher bars for {symbol} are missing keys: {', '.join(missing)}")
     rows = []
     for bar in bars:
         volume = bar.get("vol", bar.get("volume"))
@@ -70,13 +70,13 @@ def _ecom_bars_to_frame(bars: list[dict[str, Any]], symbol: str) -> pd.DataFrame
     for column in ("open", "high", "low", "close", "volume"):
         frame[column] = pd.to_numeric(frame[column], errors="coerce")
     if frame[["open", "high", "low", "close"]].isna().any().any():
-        raise ValueError(f"ecom-data bars for {symbol} contain non-numeric OHLCV values")
+        raise ValueError(f"line-fetcher bars for {symbol} contain non-numeric OHLCV values")
     timestamps = pd.to_datetime(frame["timestamp"], errors="coerce")
     if timestamps.dt.tz is not None:
         timestamps = timestamps.dt.tz_localize(None)
     frame["timestamp"] = timestamps
     if frame["timestamp"].isna().any():
-        raise ValueError(f"ecom-data bars for {symbol} contain invalid datetimes")
+        raise ValueError(f"line-fetcher bars for {symbol} contain invalid datetimes")
     frame["symbol"] = str(symbol)
     return frame[["timestamp", "open", "high", "low", "close", "volume", "symbol"]]
 
@@ -92,7 +92,7 @@ def _batch_provenance(
         storage = "; ".join(sorted({entry["storage"] for entry in entries}))
         retrieved = max(entry["retrieved_at_utc"] for entry in entries)
         return source, storage, retrieved
-    return configured.name, "ecom-data source", datetime.now(UTC)
+    return configured.name, "line-fetcher source", datetime.now(UTC)
 
 
 def fetch_bars(
@@ -104,10 +104,10 @@ def fetch_bars(
     *,
     source: DataSource | None = None,
 ) -> PredictDataBatch:
-    """Fetch daily bars through an ecom-data source and window them by date.
+    """Fetch daily bars through a line-fetcher source and window them by date.
 
     ``source`` is injectable so tests can validate the mapping without network calls; the default
-    path uses the registered ecom-data source named ``easy-tdx`` (cache-through SQLite).
+    path uses the registered line-fetcher source named ``easy-tdx`` (cache-through SQLite).
     """
 
     configured = source or get_source("easy-tdx")
@@ -130,7 +130,7 @@ def fetch_bars(
                     start=0,
                 )
             )
-            frame = _ecom_bars_to_frame(bars, symbol)
+            frame = _bars_to_frame(bars, symbol)
             frame = frame[
                 (frame["timestamp"] >= pd.Timestamp(start))
                 & (frame["timestamp"] <= pd.Timestamp(end))
@@ -142,7 +142,7 @@ def fetch_bars(
     if not frames:
         reasons = "; ".join(f"{symbol}: {reason}" for symbol, reason in skipped.items())
         raise RuntimeError(
-            f"Unable to load ecom-data bars for any of {symbols} between "
+            f"Unable to load line-fetcher bars for any of {symbols} between "
             f"{start_date} and {end_date}: {reasons}"
         )
 

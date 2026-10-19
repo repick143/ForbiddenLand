@@ -14,8 +14,8 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
 
-from ecom_data.errors import SourceNotFoundError
-from ecom_data.model import BarRequest, QuoteRequest
+from line_fetcher.errors import SourceNotFoundError
+from line_fetcher.model import BarRequest, QuoteRequest
 
 
 class DataSource(ABC):
@@ -66,27 +66,27 @@ def list_sources() -> list[str]:
 
 
 # Importing the adapter registers it in the registry.
-from ecom_data.sources import (
+from line_fetcher.sources import (
     akshare,  # noqa: F401
     easy_tdx,  # noqa: F401
 )
 
 
 def _load_plugins() -> None:
-    """Load user data-source plugins from ``ECOM_DATA_PLUGIN_FILE``.
+    """Load user data-source plugins from ``LINE_FETCHER_PLUGIN_FILE``.
 
     The module must expose a ``register()`` callable that calls
     ``register_source`` for each custom source. This lets new backends live
     outside the skill package without changing the CLI interface.
     """
 
-    raw = os.environ.get("ECOM_DATA_PLUGIN_FILE")
+    raw = os.environ.get("LINE_FETCHER_PLUGIN_FILE")
     if not raw:
         return
     path = Path(raw).expanduser()
-    spec = importlib.util.spec_from_file_location("ecom_data_plugin", path)
+    spec = importlib.util.spec_from_file_location("line_fetcher_plugin", path)
     if spec is None or spec.loader is None:
-        raise RuntimeError(f"Cannot load ecom-data plugin: {path}")
+        raise RuntimeError(f"Cannot load line-fetcher plugin: {path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     register = getattr(module, "register", None)

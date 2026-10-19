@@ -45,7 +45,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--source",
         default="easy-tdx",
-        help="ecom-data source name for daily bars: easy-tdx (default, fast) or akshare",
+        help="line-fetcher source name for daily bars: easy-tdx (default, fast) or akshare",
     )
     parser.add_argument(
         "--bar-count",

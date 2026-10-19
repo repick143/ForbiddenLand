@@ -51,8 +51,8 @@ XGBoost walk-forward 训练 → 预计算信号 → AKQuant 回测。命令与�
 
 模块与职责：
 
-- `baseline/data.py`：经 `src/ecom_data` 拉取日线，默认 `easy-tdx` source（easy-tdx Python 库
-  + SQLite 缓存 `data/cache/ecom_data.db`），可选 `akshare` source（`AkShareMarketProvider`，
+- `baseline/data.py`：经 `src/line_fetcher` 拉取日线，默认 `easy-tdx` source（easy-tdx Python 库
+  + SQLite 缓存 `data/cache/line_fetcher.db`），可选 `akshare` source（`AkShareMarketProvider`，
   含重试/腾讯兜底/`data/cache/akshare` 远程缓存）；保留 source/storage/retrieved_at 溯源；
   默认股票池 `688256`/`688072`/`600183`。
 - `baseline/features.py`：14 个因果量价特征（gap、ret_1/5/10/20、均线乖离、vol_20、量比、涨跌停标志等），
@@ -71,8 +71,8 @@ XGBoost walk-forward 训练 → 预计算信号 → AKQuant 回测。命令与�
   预测 CLI 加载（指纹写入报告溯源，不强制一致以便跨股票池推理）。
 
 实现代码统一放在 `research/predict/baseline/`（README、命令与参数见该目录的 `README.md`）；
-数据获取层在 `src/ecom_data/sources/`（`easy_tdx.py` 走 Python API + SQLite 缓存，`akshare.py`
-包装 `AkShareMarketProvider`；均实现 ecom-data `DataSource` 契约）。
+数据获取层在 `src/line_fetcher/sources/`（`easy_tdx.py` 走 Python API + SQLite 缓存，`akshare.py`
+包装 `AkShareMarketProvider`；均实现 line-fetcher `DataSource` 契约）。
 
 约束与红线：默认远程数据（本次运行实际走了 Tencent historical fallback，provenance 已记录）；
 不读本地未验证快照；新增依赖 `xgboost`（`pyproject.toml` 的 `research` 组）。

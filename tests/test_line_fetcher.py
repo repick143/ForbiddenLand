@@ -1,4 +1,4 @@
-"""Offline tests for the ecom-data cache layer (fake source, temp SQLite)."""
+"""Offline tests for the line-fetcher cache layer (fake source, temp SQLite)."""
 
 from __future__ import annotations
 
@@ -12,13 +12,13 @@ from pathlib import Path
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS_DIR = PROJECT_ROOT / "skills" / "ecom-data" / "scripts"
+SCRIPTS_DIR = PROJECT_ROOT / "skills" / "line-fetcher" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from ecom_data import EcomData
-from ecom_data.errors import SourceNotFoundError
-from ecom_data.model import BarRequest, QuoteRequest
-from ecom_data.sources import DataSource, register_source
+from line_fetcher import LineFetcher
+from line_fetcher.errors import SourceNotFoundError
+from line_fetcher.model import BarRequest, QuoteRequest
+from line_fetcher.sources import DataSource, register_source
 
 
 class FakeSource(DataSource):
@@ -65,13 +65,13 @@ def fake_source() -> FakeSource:
 
 
 @pytest.fixture
-def svc(fake_source: FakeSource, tmp_path: Path) -> EcomData:
-    instance = EcomData(source_name="fake", db_path=tmp_path / "cache.db")
+def svc(fake_source: FakeSource, tmp_path: Path) -> LineFetcher:
+    instance = LineFetcher(source_name="fake", db_path=tmp_path / "cache.db")
     yield instance
     instance.close()
 
 
-def test_first_get_fetches_then_caches(fake_source: FakeSource, svc: EcomData) -> None:
+def test_first_get_fetches_then_caches(fake_source: FakeSource, svc: LineFetcher) -> None:
     request = BarRequest("SH", "688183", count=10)
 
     first = svc.get_bars(request)
@@ -86,7 +86,7 @@ def test_first_get_fetches_then_caches(fake_source: FakeSource, svc: EcomData) -
 
 
 def test_larger_count_refetches_and_smaller_served_from_cache(
-    fake_source: FakeSource, svc: EcomData
+    fake_source: FakeSource, svc: LineFetcher
 ) -> None:
     svc.get_bars(BarRequest("SH", "688183", count=5))
     assert fake_source.calls["bars"] == 1
@@ -103,7 +103,7 @@ def test_larger_count_refetches_and_smaller_served_from_cache(
     assert small["bars"][-1]["close"] == bigger["bars"][-1]["close"]
 
 
-def test_start_offset_slices_from_cache(fake_source: FakeSource, svc: EcomData) -> None:
+def test_start_offset_slices_from_cache(fake_source: FakeSource, svc: LineFetcher) -> None:
     svc.get_bars(BarRequest("SH", "688183", count=10))
     request = BarRequest("SH", "688183", count=3, start=2)
     result = svc.get_bars(request)
@@ -113,7 +113,7 @@ def test_start_offset_slices_from_cache(fake_source: FakeSource, svc: EcomData) 
     assert result["bars"][-1]["close"] == 17.5  # window indices 5..7
 
 
-def test_ttl_expiry_refetches(fake_source: FakeSource, svc: EcomData, tmp_path: Path) -> None:
+def test_ttl_expiry_refetches(fake_source: FakeSource, svc: LineFetcher, tmp_path: Path) -> None:
     request = BarRequest("SH", "688183", count=5)
     svc.get_bars(request)
     assert fake_source.calls["bars"] == 1
@@ -140,7 +140,7 @@ def test_ttl_expiry_refetches(fake_source: FakeSource, svc: EcomData, tmp_path: 
     assert fake_source.calls["bars"] == 2
 
 
-def test_quote_caches_and_refresh(fake_source: FakeSource, svc: EcomData) -> None:
+def test_quote_caches_and_refresh(fake_source: FakeSource, svc: LineFetcher) -> None:
     request = QuoteRequest("SH", "600183")
 
     first = svc.get_quote(request)
@@ -168,8 +168,8 @@ def test_sources_are_isolated(tmp_path: Path) -> None:
     register_source(source_b)
 
     with (
-        EcomData(source_name="fake-a", db_path=tmp_path / "a.db") as _a,
-        EcomData(source_name="fake-b", db_path=tmp_path / "b.db") as b,
+        LineFetcher(source_name="fake-a", db_path=tmp_path / "a.db") as _a,
+        LineFetcher(source_name="fake-b", db_path=tmp_path / "b.db") as b,
     ):
         result_b = b.get_bars(BarRequest("SH", "688183", count=5))
         assert result_b["provenance"]["cached"] is False
@@ -177,7 +177,7 @@ def test_sources_are_isolated(tmp_path: Path) -> None:
         assert calls_a == {}
 
 
-def test_stats_and_clear(fake_source: FakeSource, svc: EcomData) -> None:
+def test_stats_and_clear(fake_source: FakeSource, svc: LineFetcher) -> None:
     svc.get_bars(BarRequest("SH", "688183", count=5))
     svc.get_quote(QuoteRequest("SH", "600183"))
 
@@ -196,7 +196,7 @@ def test_stats_and_clear(fake_source: FakeSource, svc: EcomData) -> None:
 
 def test_unknown_source_raises(tmp_path: Path) -> None:
     with pytest.raises(SourceNotFoundError, match="Unknown data source"):
-        EcomData(source_name="does-not-exist", db_path=tmp_path / "x.db")
+        LineFetcher(source_name="does-not-exist", db_path=tmp_path / "x.db")
 
 
 def test_request_validation() -> None:
@@ -207,10 +207,10 @@ def test_request_validation() -> None:
 def test_cli_offline_commands(tmp_path: Path) -> None:
     env = dict(os.environ)
     env["PYTHONPATH"] = str(SCRIPTS_DIR) + os.pathsep + env.get("PYTHONPATH", "")
-    env["ECOM_DATA_DB_PATH"] = str(tmp_path / "cli.db")
+    env["LINE_FETCHER_DB_PATH"] = str(tmp_path / "cli.db")
 
     sources = subprocess.run(
-        [sys.executable, "-m", "ecom_data", "sources"],
+        [sys.executable, "-m", "line_fetcher", "sources"],
         capture_output=True,
         text=True,
         env=env,
@@ -220,7 +220,7 @@ def test_cli_offline_commands(tmp_path: Path) -> None:
     assert '"name": "easy-tdx"' in sources.stdout
 
     stats = subprocess.run(
-        [sys.executable, "-m", "ecom_data", "stats"],
+        [sys.executable, "-m", "line_fetcher", "stats"],
         capture_output=True,
         text=True,
         env=env,
@@ -235,8 +235,8 @@ def test_cli_bars_with_fake_source(tmp_path: Path) -> None:
 
     plugin = tmp_path / "plugin.py"
     plugin.write_text(
-        "from ecom_data.model import BarRequest, QuoteRequest\n"
-        "from ecom_data.sources import DataSource, register_source\n"
+        "from line_fetcher.model import BarRequest, QuoteRequest\n"
+        "from line_fetcher.sources import DataSource, register_source\n"
         "\n"
         "class PluginFake(DataSource):\n"
         '    name = "fake"\n'
@@ -263,15 +263,15 @@ def test_cli_bars_with_fake_source(tmp_path: Path) -> None:
 
     env = dict(os.environ)
     env["PYTHONPATH"] = str(SCRIPTS_DIR) + os.pathsep + env.get("PYTHONPATH", "")
-    env["ECOM_DATA_DB_PATH"] = str(tmp_path / "cli.db")
-    env["ECOM_DATA_SOURCE"] = "fake"
-    env["ECOM_DATA_PLUGIN_FILE"] = str(plugin)
+    env["LINE_FETCHER_DB_PATH"] = str(tmp_path / "cli.db")
+    env["LINE_FETCHER_SOURCE"] = "fake"
+    env["LINE_FETCHER_PLUGIN_FILE"] = str(plugin)
 
     proc = subprocess.run(
         [
             sys.executable,
             "-m",
-            "ecom_data",
+            "line_fetcher",
             "bars",
             "SH",
             "688183",

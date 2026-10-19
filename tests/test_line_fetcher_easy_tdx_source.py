@@ -10,9 +10,9 @@ import pandas as pd
 import pytest
 from easy_tdx import Adjust, Market, Period
 
-from ecom_data.errors import DataSourceError
-from ecom_data.model import BarRequest, QuoteRequest
-from ecom_data.sources.easy_tdx import EasyTdxSource
+from line_fetcher.errors import DataSourceError
+from line_fetcher.model import BarRequest, QuoteRequest
+from line_fetcher.sources.easy_tdx import EasyTdxSource
 
 
 def _kline_frame(days: int = 30) -> pd.DataFrame:
@@ -89,12 +89,12 @@ def test_fetch_bars_fetches_then_serves_from_cache(tmp_path: Path) -> None:
     first = source.fetch_bars(request)
     assert len(first) == 10
     assert client.calls == 1
-    assert source.last_fetch["600519"]["storage"] == "ecom-data source"
+    assert source.last_fetch["600519"]["storage"] == "line-fetcher source"
 
     second = source.fetch_bars(request)
     assert second == first
     assert client.calls == 1
-    assert source.last_fetch["600519"]["storage"] == "ecom-data sqlite cache"
+    assert source.last_fetch["600519"]["storage"] == "line-fetcher sqlite cache"
 
 
 def test_fetch_bars_larger_count_refetches(tmp_path: Path) -> None:

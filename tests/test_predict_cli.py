@@ -10,8 +10,8 @@ import pandas as pd
 import pytest
 from predict_fixtures import make_bars
 
-from ecom_data.model import BarRequest, QuoteRequest
-from ecom_data.sources import DataSource, register_source
+from line_fetcher.model import BarRequest, QuoteRequest
+from line_fetcher.sources import DataSource, register_source
 from research.predict.baseline import data as data_mod
 from research.predict.baseline import features as feat
 from research.predict.baseline import predict as predict_mod
@@ -44,7 +44,7 @@ class FakeSource(DataSource):
 
 
 def _bars_for_symbols(symbols: tuple[str, ...]) -> dict[str, list[dict]]:
-    """Convert the deterministic fixture frame into ecom-data bar dicts per symbol."""
+    """Convert the deterministic fixture frame into line-fetcher bar dicts per symbol."""
 
     frame = make_bars(symbols=symbols, days=260)
     by_symbol: dict[str, list[dict]] = {}

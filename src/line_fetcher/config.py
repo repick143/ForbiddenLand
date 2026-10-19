@@ -1,4 +1,4 @@
-"""Path and environment configuration for the ecom-data library."""
+"""Path and environment configuration for the line-fetcher library."""
 
 from __future__ import annotations
 
@@ -23,18 +23,18 @@ PROJECT_ROOT = _find_repo_root(PACKAGE_DIR)
 def default_db_path() -> Path:
     """Return the SQLite cache path (env override, then repo data/cache)."""
 
-    override = os.environ.get("ECOM_DATA_DB_PATH")
+    override = os.environ.get("LINE_FETCHER_DB_PATH")
     if override:
         return Path(override).expanduser()
-    return PROJECT_ROOT / "data" / "cache" / "ecom_data.db"
+    return PROJECT_ROOT / "data" / "cache" / "line_fetcher.db"
 
 
 def default_source_name() -> str:
-    return os.environ.get("ECOM_DATA_SOURCE", "easy-tdx")
+    return os.environ.get("LINE_FETCHER_SOURCE", "easy-tdx")
 
 
 def default_source_timeout() -> float:
-    raw = os.environ.get("ECOM_DATA_SOURCE_TIMEOUT_SECONDS", "30")
+    raw = os.environ.get("LINE_FETCHER_SOURCE_TIMEOUT_SECONDS", "30")
     try:
         return float(raw)
     except ValueError:

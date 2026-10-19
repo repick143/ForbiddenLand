@@ -1,4 +1,4 @@
-"""Offline tests for the baseline data adapter over the ecom-data source contract."""
+"""Offline tests for the baseline data adapter over the line-fetcher source contract."""
 
 from __future__ import annotations
 
@@ -7,9 +7,9 @@ from datetime import UTC, datetime, timedelta
 import pandas as pd
 import pytest
 
-from ecom_data.model import BarRequest, QuoteRequest
-from ecom_data.sources import DataSource, register_source
-from ecom_data.sources.akshare import market_for_code
+from line_fetcher.model import BarRequest, QuoteRequest
+from line_fetcher.sources import DataSource, register_source
+from line_fetcher.sources.akshare import market_for_code
 from research.predict.baseline import data as data_mod
 
 
@@ -93,7 +93,7 @@ def test_fetch_bars_provenance_fallback_without_last_fetch() -> None:
     source = NoProvenanceSource({"688256": _fake_bars("688256")})
     batch = data_mod.fetch_bars(("688256",), "20240101", "20240131", source=source)
     assert batch.source == "fake"
-    assert batch.storage == "ecom-data source"
+    assert batch.storage == "line-fetcher source"
 
 
 def test_fetch_bars_rejects_missing_keys() -> None:

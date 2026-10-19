@@ -1,8 +1,8 @@
-"""easy-tdx data-source adapter backed by the easy-tdx Python API and the ecom-data cache.
+"""easy-tdx data-source adapter backed by the easy-tdx Python API and the line-fetcher cache.
 
 Fetching uses ``MacClient`` (one persistent connection, auto-paginated K-lines) instead of
 spawning the ``easy-tdx`` binary. Every successful bar/quote response is written back to the
-ecom-data SQLite cache (``data/cache/ecom_data.db``); a later request with the same
+line-fetcher SQLite cache (``data/cache/line_fetcher.db``); a later request with the same
 source/market/code/period/adjust/bar_time that already covers the requested window is served
 from cache without touching the TDX server.
 """
@@ -18,11 +18,11 @@ import easy_tdx
 import pandas as pd
 from easy_tdx import Adjust, MacClient, Market, Period
 
-from ecom_data.config import default_db_path
-from ecom_data.errors import DataSourceError
-from ecom_data.model import BarRequest, QuoteRequest
-from ecom_data.sources import DataSource, register_source
-from ecom_data.storage import Cache
+from line_fetcher.config import default_db_path
+from line_fetcher.errors import DataSourceError
+from line_fetcher.model import BarRequest, QuoteRequest
+from line_fetcher.sources import DataSource, register_source
+from line_fetcher.storage import Cache
 
 _MARKET_MAP = {"SH": Market.SH, "SZ": Market.SZ, "BJ": Market.BJ}
 _PERIOD_MAP = {
@@ -66,7 +66,7 @@ def _scalar(value: Any) -> Any:
 
 
 def _df_to_bars(frame: pd.DataFrame) -> list[dict[str, Any]]:
-    """Convert a MacClient K-line frame into ecom-data bar dicts."""
+    """Convert a MacClient K-line frame into line-fetcher bar dicts."""
 
     if frame is None or frame.empty:
         return []
@@ -171,7 +171,7 @@ class EasyTdxSource(DataSource):
     ) -> None:
         self.last_fetch[request.code] = {
             "source": self.name,
-            "storage": "ecom-data sqlite cache" if cached else "ecom-data source",
+            "storage": "line-fetcher sqlite cache" if cached else "line-fetcher source",
             "retrieved_at_utc": (
                 datetime.fromisoformat(fetched_at) if fetched_at else datetime.now(UTC)
             ),

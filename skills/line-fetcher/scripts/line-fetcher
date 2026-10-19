@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# line-fetcher launcher: references the installed library (src/line_fetcher).
+# Prefers the console script, falls back to `python -m line_fetcher`.
+set -euo pipefail
+
+here="${BASH_SOURCE[0]}"
+if command -v python3 >/dev/null 2>&1; then
+  here="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$here")"
+fi
+root="$(cd "$(dirname "$here")/../../.." && pwd)"
+py="$root/.venv/bin/python"
+if [ ! -x "$py" ]; then
+  echo "line-fetcher: missing $py; run 'python scripts/bootstrap.py' first" >&2
+  exit 1
+fi
+if [ -x "$root/.venv/bin/line-fetcher" ]; then
+  exec "$root/.venv/bin/line-fetcher" "$@"
+fi
+exec "$py" -m line_fetcher "$@"

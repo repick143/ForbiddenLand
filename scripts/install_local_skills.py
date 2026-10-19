@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_SKILLS = ("easy-tdx-data", "ecom-data")
+DEFAULT_SKILLS = ("easy-tdx-data", "line-fetcher")
 
 
 def validate_skill_name(name: str) -> str:

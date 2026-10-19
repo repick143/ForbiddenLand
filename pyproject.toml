@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [project.scripts]
-ecom-data = "ecom_data.cli:main"
+line-fetcher = "line_fetcher.cli:main"
 
 [project.optional-dependencies]
 data = [

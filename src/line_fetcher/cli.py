@@ -1,4 +1,4 @@
-"""Stable command-line interface for the ecom-data cache layer.
+"""Stable command-line interface for the line-fetcher cache layer.
 
 The subcommand surface and request parameters are source-agnostic; only
 ``--source`` selects the backend adapter. Adding a new data source never
@@ -15,11 +15,11 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from ecom_data.config import default_source_name
-from ecom_data.errors import EcomDataError
-from ecom_data.model import BarRequest, QuoteRequest
-from ecom_data.service import EcomData
-from ecom_data.sources import get_source, list_sources
+from line_fetcher.config import default_source_name
+from line_fetcher.errors import LineFetcherError
+from line_fetcher.model import BarRequest, QuoteRequest
+from line_fetcher.service import LineFetcher
+from line_fetcher.sources import get_source, list_sources
 
 
 def _add_common(p: argparse.ArgumentParser) -> None:
@@ -33,7 +33,7 @@ def _add_common(p: argparse.ArgumentParser) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="ecom-data",
+        prog="line-fetcher",
         description="Cache-through securities data layer with pluggable sources.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
@@ -157,7 +157,7 @@ def _dispatch(args: argparse.Namespace) -> int:
             start=args.start,
         )
         fmt = "table" if args.table else args.output
-        with EcomData(_resolve_source(args.source), args.db) as svc:
+        with LineFetcher(_resolve_source(args.source), args.db) as svc:
             result = svc.get_bars(request, ttl_seconds=args.ttl_seconds, refresh=args.refresh)
         print(_emit_bars(result, fmt))
         return 0
@@ -165,19 +165,19 @@ def _dispatch(args: argparse.Namespace) -> int:
     if command == "quote":
         request = QuoteRequest(market=args.market, code=args.code)
         fmt = "table" if args.table else args.output
-        with EcomData(_resolve_source(args.source), args.db) as svc:
+        with LineFetcher(_resolve_source(args.source), args.db) as svc:
             result = svc.get_quote(request, ttl_seconds=args.ttl_seconds, refresh=args.refresh)
         print(_emit_quote(result, fmt))
         return 0
 
     if command == "stats":
-        with EcomData(_resolve_source(args.source), args.db) as svc:
+        with LineFetcher(_resolve_source(args.source), args.db) as svc:
             stats = svc.stats()
         print(json.dumps(stats, ensure_ascii=False, indent=2))
         return 0
 
     if command == "clear":
-        with EcomData(_resolve_source(args.source), args.db) as svc:
+        with LineFetcher(_resolve_source(args.source), args.db) as svc:
             if args.yes:
                 deleted = svc.clear(source=args.source, older_than_seconds=args.older_than_seconds)
                 print(json.dumps(deleted, ensure_ascii=False, indent=2))
@@ -194,7 +194,7 @@ def _dispatch(args: argparse.Namespace) -> int:
             source = get_source(name)
             try:
                 version = source.source_version
-            except EcomDataError:
+            except LineFetcherError:
                 version = None
             entries.append({"name": name, "version": version})
         print(json.dumps(entries, ensure_ascii=False, indent=2))
@@ -221,8 +221,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         return _dispatch(args)
-    except (EcomDataError, OSError, ValueError) as exc:
-        print(f"ecom-data: {exc}", file=sys.stderr)
+    except (LineFetcherError, OSError, ValueError) as exc:
+        print(f"line-fetcher: {exc}", file=sys.stderr)
         return 1
 
 

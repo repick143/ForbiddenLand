@@ -1,7 +1,7 @@
 """Run this example from anywhere; it resolves the repo and .venv itself.
 
 Usage:
-    python skills/ecom-data/examples/usage.py
+    python skills/line-fetcher/examples/usage.py
 """
 
 from __future__ import annotations
@@ -9,12 +9,12 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from ecom_data import BarRequest, EcomData, QuoteRequest
+from line_fetcher import BarRequest, LineFetcher, QuoteRequest
 
 REPO = Path(__file__).resolve().parents[3]
 PYTHON = REPO / ".venv" / "bin" / "python"
-CLI = REPO / "skills" / "ecom-data" / "scripts" / "ecom-data"
-DB = Path("/tmp/ecom-data-example.db")
+CLI = REPO / "skills" / "line-fetcher" / "scripts" / "line-fetcher"
+DB = Path("/tmp/line-fetcher-example.db")
 
 
 def cli_style() -> None:
@@ -22,7 +22,7 @@ def cli_style() -> None:
 
     subprocess.run(
         [str(CLI), "bars", "SH", "600183", "--adjust", "QFQ", "--count", "3", "--table"],
-        env={"ECOM_DATA_DB_PATH": str(DB)},
+        env={"LINE_FETCHER_DB_PATH": str(DB)},
         check=False,
     )
 
@@ -30,7 +30,7 @@ def cli_style() -> None:
 def python_api() -> None:
     """Python API inside your own code (same cache database)."""
 
-    with EcomData(db_path=DB) as svc:
+    with LineFetcher(db_path=DB) as svc:
         bars = svc.get_bars(BarRequest("SH", "600183", adjust="QFQ", count=3))
         print("cached:", bars["provenance"]["cached"], "source:", bars["source"])
         print("last bar:", bars["bars"][-1]["datetime"][:10], bars["bars"][-1]["close"])

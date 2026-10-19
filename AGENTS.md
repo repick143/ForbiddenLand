@@ -335,15 +335,15 @@ focused on durable engineering constraints. Add project-specific rules as the co
   compatibility; the complete project test, format, lint, compile, and diff checks are the release
   gate.
 
-### ecom-data cache layer skill
+### line-fetcher cache layer skill
 
-- Status: implemented as the library `src/ecom_data` (installed by
-  `python -m pip install -e ".[dev,data]"`, which registers the `ecom-data`
+- Status: implemented as the library `src/line_fetcher` (installed by
+  `python -m pip install -e ".[dev,data]"`, which registers the `line-fetcher`
   console script via `pyproject.toml` `[project.scripts]`). The skill
-  `skills/ecom-data/` is documentation plus a thin launcher
-  (`skills/ecom-data/scripts/ecom-data`) that delegates to the installed
-  library; code uses `from ecom_data import EcomData, BarRequest, QuoteRequest`
-  directly (see `skills/ecom-data/examples/usage.py`).
+  `skills/line-fetcher/` is documentation plus a thin launcher
+  (`skills/line-fetcher/scripts/line-fetcher`) that delegates to the installed
+  library; code uses `from line_fetcher import LineFetcher, BarRequest, QuoteRequest`
+  directly (see `skills/line-fetcher/examples/usage.py`).
   `scripts/install_local_skills.py` links the skill into `$CODEX_HOME/skills`
   together with `easy-tdx-data`.
 - Interface contract: subcommands `bars`, `quote`, `stats`, `clear`, `sources`,
@@ -352,18 +352,19 @@ focused on durable engineering constraints. Add project-specific rules as the co
   backend. `bars`/`quote` are cache-through: local SQLite first, fetch and
   write back on a miss, with optional `--ttl-seconds` and `--refresh`. Results
   always carry `provenance` (`cached`, `fetched_at`, `source_version`).
-- Storage: SQLite cache at `data/cache/ecom_data.db` (gitignored; override
-  `ECOM_DATA_DB_PATH`). Bar series are keyed by
+- Storage: SQLite cache at `data/cache/line_fetcher.db` (gitignored; override
+  `LINE_FETCHER_DB_PATH`). Bar series are keyed by
   `(source, market, code, period, adjust, bar_time)` and quotes by
   `(source, market, code)`. SQLite was chosen as the lightest engine (stdlib);
   DuckDB remains the project's analytical store.
-- Data-source boundary: `ecom_data.sources.DataSource` with
-  `fetch_bars`/`fetch_quote`; `easy-tdx` is the only bundled adapter and talks
-  to the wrapped easy-tdx binary. New backends implement the interface in
-  `src/ecom_data/sources/` and call `register_source`, or load out-of-tree via
-  `ECOM_DATA_PLUGIN_FILE`; no CLI or storage change is required to switch
-  sources.
-- Verification: offline tests in `tests/test_ecom_data.py` cover cache-through,
+- Data-source boundary: `line_fetcher.sources.DataSource` with
+  `fetch_bars`/`fetch_quote`; `easy-tdx` is the only bundled adapter and uses
+  the easy-tdx Python API (`MacClient`, one persistent connection,
+  auto-paginated K-lines) with cache-through SQLite writes. New backends
+  implement the interface in `src/line_fetcher/sources/` and call
+  `register_source`, or load out-of-tree via `LINE_FETCHER_PLUGIN_FILE`; no CLI
+  or storage change is required to switch sources.
+- Verification: offline tests in `tests/test_line_fetcher.py` cover cache-through,
   coverage growth, TTL expiry, quote caching, source isolation, stats/clear,
   request validation, and CLI source selection; live easy-tdx fetch is a smoke
   test only.

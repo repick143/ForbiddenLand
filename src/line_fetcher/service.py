@@ -7,10 +7,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Self
 
-from ecom_data.config import default_db_path, default_source_name
-from ecom_data.model import BarRequest, QuoteRequest
-from ecom_data.sources import DataSource, get_source
-from ecom_data.storage import Cache, iso_now, utcnow
+from line_fetcher.config import default_db_path, default_source_name
+from line_fetcher.model import BarRequest, QuoteRequest
+from line_fetcher.sources import DataSource, get_source
+from line_fetcher.storage import Cache, iso_now, utcnow
 
 
 def _slice_tail(bars: list[dict[str, Any]], start: int, count: int) -> list[dict[str, Any]]:
@@ -27,7 +27,7 @@ def _slice_tail(bars: list[dict[str, Any]], start: int, count: int) -> list[dict
     return bars[begin:end]
 
 
-class EcomData:
+class LineFetcher:
     """Cache-through facade bound to one data source and one SQLite cache."""
 
     def __init__(self, source_name: str | None = None, db_path: Path | None = None) -> None:
