@@ -335,6 +335,37 @@ focused on durable engineering constraints. Add project-specific rules as the co
   compatibility; the complete project test, format, lint, compile, and diff checks are the release
   gate.
 
+### ecom-data cache layer skill
+
+- Status: implemented as `skills/ecom-data/`; the stable CLI entry point is
+  the directly executable `skills/ecom-data/scripts/ecom-data` (or
+  `python -m ecom_data` with `PYTHONPATH=skills/ecom-data/scripts`). Code may
+  import the same layer with `sys.path` pointing at
+  `skills/ecom-data/scripts` and `from ecom_data import EcomData, BarRequest,
+  QuoteRequest`; see `skills/ecom-data/examples/usage.py`.
+  `scripts/install_local_skills.py` links the skill into `$CODEX_HOME/skills`
+  together with `easy-tdx-data`.
+- Interface contract: subcommands `bars`, `quote`, `stats`, `clear`, `sources`,
+  `ping`; request parameters are source-agnostic (`market`, `code`, `period`,
+  `adjust`, `bar-time`, `count`, `start`) and only `--source` selects the
+  backend. `bars`/`quote` are cache-through: local SQLite first, fetch and
+  write back on a miss, with optional `--ttl-seconds` and `--refresh`. Results
+  always carry `provenance` (`cached`, `fetched_at`, `source_version`).
+- Storage: SQLite cache at `data/cache/ecom_data.db` (gitignored; override
+  `ECOM_DATA_DB_PATH`). Bar series are keyed by
+  `(source, market, code, period, adjust, bar_time)` and quotes by
+  `(source, market, code)`. SQLite was chosen as the lightest engine (stdlib);
+  DuckDB remains the project's analytical store.
+- Data-source boundary: `ecom_data.sources.DataSource` with
+  `fetch_bars`/`fetch_quote`; `easy-tdx` is the only bundled adapter and talks
+  to the wrapped easy-tdx binary. New backends implement the interface and call
+  `register_source`, or load out-of-tree via `ECOM_DATA_PLUGIN_FILE`; no CLI or
+  storage change is required to switch sources.
+- Verification: offline tests in `tests/test_ecom_data.py` cover cache-through,
+  coverage growth, TTL expiry, quote caching, source isolation, stats/clear,
+  request validation, and CLI source selection; live easy-tdx fetch is a smoke
+  test only.
+
 ## Git Discipline
 
 - Inspect `git status` and the complete diff before committing.
