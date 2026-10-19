@@ -23,6 +23,7 @@
 | `signal-noise-ratio-handling-detail.md` | 低信噪比处理五侧详解（对应精炼条目的展开版） | 2026-10-16 | 同上 |
 | `backtest-return-attribution.md` | 回测收益归因：beta 漂移 vs alpha（与 Buy & Hold 对比） | 2026-10-19 | reports/predict_baseline.json、实践共识 |
 | `no-signal-evaluation.md` | 怎么评估"没学到信号"（相关性/显著性/单调性/交易价值四层检验） | 2026-10-19 | 同上 |
+| `technical-indicators-value.md` | 技术指标（MACD 等）要不要加：信息量分析 + 对照实验建议 | 2026-10-19 | features.py、实践共识 |
 
 ## 关联文档
 

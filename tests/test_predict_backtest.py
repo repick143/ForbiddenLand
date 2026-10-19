@@ -5,7 +5,7 @@ from datetime import date
 import pandas as pd
 from predict_fixtures import make_bars
 
-from research.predict import backtest as bt
+from research.predict.baseline import backtest as bt
 
 
 def test_build_signal_map_normalizes_dates() -> None:

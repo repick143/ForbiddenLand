@@ -5,7 +5,7 @@ from datetime import date
 import pandas as pd
 from predict_fixtures import make_bars
 
-from research.predict.features import FEATURE_COLUMNS, compute_features, limit_ratio
+from research.predict.baseline.features import FEATURE_COLUMNS, compute_features, limit_ratio
 
 
 def test_limit_ratio_rules() -> None:

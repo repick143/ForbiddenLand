@@ -2,7 +2,7 @@
 
 Run from the repository root with the project's virtual environment:
 
-    ./.venv/bin/python -m research.predict.run
+    ./.venv/bin/python -m research.predict.baseline.run
 
 The default path fetches remote AkShare daily bars through the project provider, trains an
 XGBoost next-day open-to-close direction classifier with walk-forward validation, and executes
@@ -27,7 +27,7 @@ from . import features as feat_mod
 from . import labels as lbl_mod
 from . import train as train_mod
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_REPORT = PROJECT_ROOT / "reports" / "predict_baseline.json"
 DEFAULT_SIGNALS = PROJECT_ROOT / "data" / "processed" / "predict_signals.csv"
 

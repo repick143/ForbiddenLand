@@ -33,7 +33,7 @@ The distilled, source-cited knowledge base for stock-model prediction lives unde
 首个可运行版本已实现，入口：
 
 ```bash
-./.venv/bin/python -m research.predict.run
+./.venv/bin/python -m research.predict.baseline.run
 ```
 
 链路：远程 AkShare（项目 provider）→ 因果特征 → 次日 open→close 标签与可成交性过滤 →
@@ -41,18 +41,22 @@ XGBoost walk-forward 训练 → 预计算信号 → AKQuant 回测。
 
 模块与职责：
 
-- `data.py`：经 `AkShareMarketProvider` 拉取远程日线，保留 source/storage/retrieved_at 溯源；
+- `baseline/data.py`：经 `src/ecom_data` 的 `akshare` source（包装 `AkShareMarketProvider`，
+  含重试/腾讯兜底/远程缓存）拉取远程日线，保留 source/storage/retrieved_at 溯源；
   默认股票池 `688256`/`688072`/`600183`。
-- `features.py`：14 个因果量价特征（gap、ret_1/5/10/20、均线乖离、vol_20、量比、涨跌停标志等），
+- `baseline/features.py`：14 个因果量价特征（gap、ret_1/5/10/20、均线乖离、vol_20、量比、涨跌停标志等），
   只用 T 日收盘及之前信息；涨跌停比例按板块近似（10%/20%）。
-- `labels.py`：标签 `sign(open_{T+1} -> close_{T+1})`；剔除不可成交样本并记录原因
+- `baseline/labels.py`：标签 `sign(open_{T+1} -> close_{T+1})`；剔除不可成交样本并记录原因
   （`t_close_limit_up`/`next_open_limit_up`/`no_next_bar`）。
-- `train.py`：时间顺序 train/valid/test 切分；XGBoost 原生 Booster + DMatrix，验证集早停；
+- `baseline/train.py`：时间顺序 train/valid/test 切分；XGBoost 原生 Booster + DMatrix，验证集早停；
   验证集选阈值（Youden J）；AUC/RankIC/朴素基线评估。
-- `backtest.py`：AKQuant 信号查表策略，NextOpen 成交、T+1、佣金/印花税/过户费/滑点与
+- `baseline/backtest.py`：AKQuant 信号查表策略，NextOpen 成交、T+1、佣金/印花税/过户费/滑点与
   `research/short_term/demo.py` 一致。
-- `run.py`：CLI 编排，写 `reports/predict_baseline.json` 与 `data/processed/predict_signals.csv`
+- `baseline/run.py`：CLI 编排，写 `reports/predict_baseline.json` 与 `data/processed/predict_signals.csv`
   （均不提交 Git）。
+
+实现代码统一放在 `research/predict/baseline/`（README、命令与参数见该目录的 `README.md`）；
+数据获取层迁移到 `src/ecom_data/sources/akshare.py`（ecom-data `DataSource` 契约）。
 
 约束与红线：默认远程数据（本次运行实际走了 Tencent historical fallback，provenance 已记录）；
 不读本地未验证快照；新增依赖 `xgboost`（`pyproject.toml` 的 `research` 组）。

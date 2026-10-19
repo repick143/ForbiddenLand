@@ -26,6 +26,11 @@ implementation code.
   `easy-tdx` binary (project `.venv/bin/easy-tdx`) and parses JSON. This keeps
   the adapter stable across easy-tdx upgrades and mirrors the easy-tdx-data
   skill convention. Direct imports of easy-tdx internals are avoided.
+- **AkShare source (`akshare`)**: added 2026-10-19 for the prediction baseline.
+  It wraps the project's `AkShareMarketProvider` (bounded retries, Tencent
+  historical fallback, remote response cache) and serves DAILY bars through the
+  same `BarRequest` contract; provider provenance (source/storage/retrieval
+  time) is retained per symbol on `source.last_fetch` for report consumers.
 - **Library in `src/`, skill as a reference**: keeping implementation code in
   `src/ecom_data` makes it importable from any repo code and console-ready via
   `[project.scripts]`; the skill stays a thin, installable instruction set.

@@ -4,9 +4,9 @@ from datetime import date
 
 from predict_fixtures import make_bars
 
-from research.predict import features as feat
-from research.predict import labels as lbl
-from research.predict import train as tr
+from research.predict.baseline import features as feat
+from research.predict.baseline import labels as lbl
+from research.predict.baseline import train as tr
 
 
 def test_walk_forward_split_is_chronological() -> None:

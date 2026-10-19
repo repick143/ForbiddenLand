@@ -66,7 +66,10 @@ def list_sources() -> list[str]:
 
 
 # Importing the adapter registers it in the registry.
-from ecom_data.sources import easy_tdx  # noqa: F401
+from ecom_data.sources import (
+    akshare,  # noqa: F401
+    easy_tdx,  # noqa: F401
+)
 
 
 def _load_plugins() -> None:

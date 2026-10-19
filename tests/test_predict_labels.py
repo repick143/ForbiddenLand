@@ -5,7 +5,7 @@ from datetime import date
 import pandas as pd
 from predict_fixtures import make_bars
 
-from research.predict.labels import build_labels
+from research.predict.baseline.labels import build_labels
 
 
 def test_label_matches_next_open_to_close_direction() -> None:
