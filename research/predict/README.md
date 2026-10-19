@@ -30,14 +30,24 @@ The distilled, source-cited knowledge base for stock-model prediction lives unde
 
 ## 实现状态与链路（2026-10-19）
 
-首个可运行版本已实现，入口：
+首个可运行版本已实现。训练与预测已拆分为独立 CLI，另保留一次跑通的组合入口：
 
 ```bash
+# 训练：取数 → 特征 → 标签 → 切分 → 训练 → 评估 → 保存模型 + 训练报告
+./.venv/bin/python -m research.predict.baseline.train \
+  --model-cache data/cache/predict_model.ubj
+
+# 预测：加载模型 → 评分 → 信号表 → AKQuant 回测 + 预测报告
+./.venv/bin/python -m research.predict.baseline.predict \
+  --model-cache data/cache/predict_model.ubj
+
+# 组合：训练 + 回测一次跑通（合并报告）
 ./.venv/bin/python -m research.predict.baseline.run
 ```
 
 链路：远程 AkShare（项目 provider）→ 因果特征 → 次日 open→close 标签与可成交性过滤 →
-XGBoost walk-forward 训练 → 预计算信号 → AKQuant 回测。
+XGBoost walk-forward 训练 → 预计算信号 → AKQuant 回测。命令与参数见
+[`baseline/README.md`](baseline/README.md)。
 
 模块与职责：
 
@@ -48,12 +58,16 @@ XGBoost walk-forward 训练 → 预计算信号 → AKQuant 回测。
   只用 T 日收盘及之前信息；涨跌停比例按板块近似（10%/20%）。
 - `baseline/labels.py`：标签 `sign(open_{T+1} -> close_{T+1})`；剔除不可成交样本并记录原因
   （`t_close_limit_up`/`next_open_limit_up`/`no_next_bar`）。
-- `baseline/train.py`：时间顺序 train/valid/test 切分；XGBoost 原生 Booster + DMatrix，验证集早停；
-  验证集选阈值（Youden J）；AUC/RankIC/朴素基线评估。
+- `baseline/train.py`：共享数据准备 `build_dataset`（取数→特征→标签→切分）；XGBoost 原生
+  Booster + DMatrix，验证集早停；验证集选阈值（Youden J）；AUC/RankIC/朴素基线评估；CLI 持久化
+  模型并写训练报告 `reports/predict_baseline_train.json`。
+- `baseline/predict.py`：CLI 加载训练产物，对 `--valid-end` 之后的窗口评分、写信号表、AKQuant
+  回测，报告评分窗指标与逐符号最新一 bar 的方向信号（`reports/predict_baseline_predict.json`）。
 - `baseline/backtest.py`：AKQuant 信号查表策略，NextOpen 成交、T+1、佣金/印花税/过户费/滑点与
   `research/short_term/demo.py` 一致。
-- `baseline/run.py`：CLI 编排，写 `reports/predict_baseline.json` 与 `data/processed/predict_signals.csv`
-  （均不提交 Git）。
+- `baseline/run.py`：组合 CLI（训练 + 回测合并报告 `reports/predict_baseline.json`）。
+- `baseline/model_cache.py`：模型文件内嵌训练指纹与验证阈值；训练 CLI 持久化（配置一致可复用），
+  预测 CLI 加载（指纹写入报告溯源，不强制一致以便跨股票池推理）。
 
 实现代码统一放在 `research/predict/baseline/`（README、命令与参数见该目录的 `README.md`）；
 数据获取层迁移到 `src/ecom_data/sources/akshare.py`（ecom-data `DataSource` 契约）。
@@ -61,8 +75,9 @@ XGBoost walk-forward 训练 → 预计算信号 → AKQuant 回测。
 约束与红线：默认远程数据（本次运行实际走了 Tencent historical fallback，provenance 已记录）；
 不读本地未验证快照；新增依赖 `xgboost`（`pyproject.toml` 的 `research` 组）。
 
-验证：新增 16 个确定性测试覆盖特征因果/涨跌停、标签口径与排除、切分/训练/评估、信号回测、
-数据归一化；全量 `pytest` 224 passed；ruff/compileall/diff 检查通过。
+验证：31 个确定性测试覆盖特征因果/涨跌停、标签口径与排除、切分/训练/评估、信号回测、数据归一化、
+模型文件缓存（指纹/阈值/无元数据加载）、训练与预测 CLI 离线端到端（取数注入 fake source）；
+全量 `pytest` 239 passed；ruff/compileall/diff 检查通过。
 
 首次真实运行（2026-10-19，训练至 2023-12-31、验证 2024-2025、测试 2026-01~10）结果诚实且符合
 预期：测试 AUC≈0.476、RankIC≈-0.006、准确率≈50.4%，**未发现可交易信号**；回测 +45.7% 接近

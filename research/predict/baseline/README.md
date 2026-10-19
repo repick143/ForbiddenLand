@@ -8,9 +8,16 @@
 - **数据获取**：原始取数与归一化在 `src/ecom_data`（`akshare` source 包装 `AkShareMarketProvider`，含有限重试、腾讯兜底、远程响应缓存）；本目录 `data.py` 只做日期窗口与面板映射，并保留 provider provenance。
 - **特征**：14 个因果量价特征（`features.py`），只用 T 日收盘及之前信息。
 - **标签**：`labels.py` — `sign(open_{T+1} -> close_{T+1})`，剔除不可成交样本并记录原因。
-- **训练**：`train.py` — 时间顺序 train/valid/test 切分、XGBoost 原生 Booster 验证集早停、验证集选阈值（Youden J）、AUC/RankIC/朴素基线评估。
+- **训练**：`train.py` — 共享数据准备 `build_dataset`（取数→特征→标签→时间顺序切分）、XGBoost
+  原生 Booster 验证集早停、验证集选阈值（Youden J）、AUC/RankIC/朴素基线评估；CLI 持久化模型
+  并写训练报告。
+- **预测**：`predict.py` — CLI 加载训练产物，对 `--valid-end` 之后的窗口评分、写信号表、AKQuant
+  回测，报告评分窗指标与逐符号最新一 bar 的方向信号。
 - **回测**：`backtest.py` — AKQuant 信号查表策略，NextOpen、T+1、佣金/印花税/过户费/滑点。
-- **编排**：`run.py` — 端到端 CLI。
+- **编排**：`run.py` — 一次跑通（训练 + 回测合并报告）。
+- **模型文件**：`model_cache.py` — 模型文件（`.ubj`/`.json`）内嵌训练配置指纹与验证阈值；
+  训练 CLI 用 `--model-cache` 持久化（配置一致时可复用，否则重训覆盖），预测 CLI 用
+  `load_model_file` 加载（指纹写入报告溯源，不强制一致以便跨股票池推理）。
 
 ## 待扩展部分
 
@@ -18,23 +25,26 @@
 - **股票池**：扩展到更大截面（当前 3 只），上截面排序/多空组合以累积弱信号。
 - **目标**：形态 B——幅度点估计 + 可信区间（分位数回归 / Conformal 兜底覆盖率）。
 - **评估**：多折 walk-forward、置换检验、bootstrap 置信区间。
-- **工程**：滚动重训与模型版本管理；接入 easy-tdx 订单流/分钟线等多源数据。
+- **工程**：滚动重训调度与模型版本注册表（文件级缓存 + 训练/预测拆分已实现）；接入 easy-tdx
+  订单流/分钟线等多源数据。
 
 ## 直接执行命令
 
-默认训练 + 回测（股票池 `688256/688072/600183`，训练至 2023-12-31、验证 2024-2025、测试 2026）：
+### 1. 训练（生成模型 + 训练报告）
+
+默认股票池 `688256/688072/600183`，训练至 2023-12-31、验证 2024-2025、测试 2026：
 
 ```bash
-./.venv/bin/python -m research.predict.baseline.run
+./.venv/bin/python -m research.predict.baseline.train
 ```
 
-指定 A 股代码做训练 + 回测（6 位代码，SH/SZ/BJ 自动识别）：
+指定 A 股代码训练（6 位代码，SH/SZ/BJ 自动识别）：
 
 ```bash
-./.venv/bin/python -m research.predict.baseline.run --symbols 600519 000858 300750
+./.venv/bin/python -m research.predict.baseline.train --symbols 600519 000858 300750
 ```
 
-常用参数：
+训练参数：
 
 | 参数 | 说明 | 默认 |
 |---|---|---|
@@ -44,9 +54,55 @@
 | `--train-end` / `--valid-end` | 训练/验证截止日（测试期 = valid-end 之后） | `20231231` / `20251231` |
 | `--seed` | 随机种子 | `42` |
 | `--threshold` | 覆盖验证集自动选择的分类阈值 | 自动 |
-| `--report` / `--signals` | 报告与信号表输出路径 | `reports/predict_baseline.json` / `data/processed/predict_signals.csv` |
+| `--model-cache` | **输出**模型文件路径（`PATH.ubj`/`.json`）；不传则不落盘 | 关闭 |
+| `--report` | 训练报告输出路径 | `reports/predict_baseline_train.json` |
 
-一次运行完成：取数 → 特征 → 标签 → 切分 → 训练 → 评估 → 生成信号 → AKQuant 回测 → 写 JSON 报告。结果判读：测试期 AUC 是否 >0.5、RankIC 是否显著为正、回测是否显著跑赢同窗 Buy & Hold（详见 [`../kb/no-signal-evaluation.md`](../kb/no-signal-evaluation.md)）。
+训练报告包含数据溯源、切分行数、train/valid/test 指标与模型指纹；`--model-cache` 已存在且指纹
+一致时直接复用（`mode=loaded`），否则重训并覆盖（`mode=saved`）。
+
+### 2. 预测（加载模型 + 评分 + 回测）
+
+```bash
+./.venv/bin/python -m research.predict.baseline.predict \
+  --model-cache data/cache/predict_model.ubj
+```
+
+指定 A 股代码做回测：
+
+```bash
+./.venv/bin/python -m research.predict.baseline.predict \
+  --symbols 600519 000858 300750 \
+  --model-cache data/cache/predict_model.ubj
+```
+
+预测参数：
+
+| 参数 | 说明 | 默认 |
+|---|---|---|
+| `--symbols` | 6 位 A 股代码列表；可不同于训练股票池（推理不强制指纹一致） | `688256 688072 600183` |
+| `--start-date` / `--end-date` | 数据窗口（`YYYYMMDD`） | `20190101` / `20261016` |
+| `--adjust` | 复权：`qfq` / `hfq` / `none` | `qfq` |
+| `--valid-end` | 评分/回测窗口起点（该日之后） | `20251231` |
+| `--model-cache` | **必填**：训练 CLI 生成的模型文件 | - |
+| `--threshold` | 覆盖模型内嵌阈值；无内嵌时默认 `0.50` | 模型内嵌 |
+| `--signals` / `--report` | 信号表与预测报告输出路径 | `data/processed/predict_signals.csv` / `reports/predict_baseline_predict.json` |
+
+预测报告包含评分窗指标、逐符号最新一 bar 的 `prob`/方向信号（`latest`）、AKQuant 回测与同窗
+Buy & Hold 对比；`latest` 的 `signal` 是“T+1 开盘”的方向提示，实际可成交性（涨跌停、缺 bar）需
+当日复核。
+
+### 3. 一次跑通（训练 + 回测合并报告）
+
+```bash
+./.venv/bin/python -m research.predict.baseline.run
+./.venv/bin/python -m research.predict.baseline.run --symbols 600519 000858 300750
+```
+
+`run.py` 参数与训练 CLI 相同，另支持可选 `--model-cache`（复用缓存模型）与 `--signals`，输出单一
+合并报告 `reports/predict_baseline.json`。
+
+结果判读：测试期 AUC 是否 >0.5、RankIC 是否显著为正、回测是否显著跑赢同窗 Buy & Hold（详见
+[`../kb/no-signal-evaluation.md`](../kb/no-signal-evaluation.md)）。
 
 示例：只看贵州茅台、2020 年以来的窗口：
 
@@ -55,4 +111,13 @@
   --symbols 600519 \
   --start-date 20200101 --end-date 20261016 \
   --train-end 20241231 --valid-end 20251231
+```
+
+示例：先训练并保存模型，再单独做预测/回测（模型建议放在被 gitignore 的 `data/cache/` 下）：
+
+```bash
+./.venv/bin/python -m research.predict.baseline.train \
+  --model-cache data/cache/predict_model.ubj
+./.venv/bin/python -m research.predict.baseline.predict \
+  --model-cache data/cache/predict_model.ubj
 ```

@@ -1,14 +1,35 @@
-"""Walk-forward training and evaluation for the XGBoost direction baseline."""
+"""Walk-forward training and evaluation for the XGBoost direction baseline.
+
+The module exposes the reusable training pieces (``build_dataset``, ``fit_classifier``, evaluation)
+and the standalone training CLI:
+
+    ./.venv/bin/python -m research.predict.baseline.train
+
+The CLI fetches data, builds features and labels, trains with validation early stopping, selects the
+classification threshold, and optionally persists the model with its training-config fingerprint.
+Prediction and backtesting live in ``predict.py``; ``run.py`` combines both in one pass.
+"""
 
 from __future__ import annotations
 
+import argparse
+import json
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 import xgboost as xgb
+
+from . import data as data_mod
+from . import features as feat_mod
+from . import labels as lbl_mod
+from . import model_cache as cache_mod
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_TRAIN_REPORT = PROJECT_ROOT / "reports" / "predict_baseline_train.json"
 
 DEFAULT_PARAMS: dict[str, Any] = {
     "max_depth": 4,
@@ -31,6 +52,51 @@ class SplitDates:
 
     train_end: date
     valid_end: date
+
+
+@dataclass(frozen=True, slots=True)
+class Dataset:
+    """Fetched, featurized, labeled panel plus the chronological split frames."""
+
+    batch: data_mod.PredictDataBatch
+    labeled: pd.DataFrame
+    features: list[str]
+    train_mask: pd.Series
+    valid_mask: pd.Series
+    test_mask: pd.Series
+    train_df: pd.DataFrame
+    valid_df: pd.DataFrame
+    test_df: pd.DataFrame
+
+
+def build_dataset(
+    symbols: tuple[str, ...],
+    start_date: str,
+    end_date: str,
+    adjust: str,
+    split: SplitDates,
+) -> Dataset:
+    """Run the fetch -> features -> labels -> chronological split chain once."""
+
+    batch = data_mod.fetch_bars(symbols, start_date, end_date, adjust)
+    feature_frame = feat_mod.compute_features(batch.frame)
+    labeled = lbl_mod.build_labels(feature_frame)
+    train_mask, valid_mask, test_mask = split_by_date(labeled, split)
+    features = list(feat_mod.FEATURE_COLUMNS)
+    train_df = labeled[train_mask & labeled["eligible"]].dropna(subset=features).copy()
+    valid_df = labeled[valid_mask & labeled["eligible"]].dropna(subset=features).copy()
+    test_df = labeled[test_mask & labeled["eligible"]].dropna(subset=features).copy()
+    return Dataset(
+        batch=batch,
+        labeled=labeled,
+        features=features,
+        train_mask=train_mask,
+        valid_mask=valid_mask,
+        test_mask=test_mask,
+        train_df=train_df,
+        valid_df=valid_df,
+        test_df=test_df,
+    )
 
 
 def split_by_date(df: pd.DataFrame, split: SplitDates) -> tuple[pd.Series, pd.Series, pd.Series]:
@@ -185,3 +251,178 @@ def _round(value: float) -> float | None:
     if value is None or np.isnan(value):
         return None
     return round(float(value), 6)
+
+
+def _date(value: str) -> date:
+    return date.fromisoformat(f"{value[:4]}-{value[4:6]}-{value[6:]}")
+
+
+def _json_value(value: Any) -> Any:
+    if hasattr(value, "item"):
+        value = value.item()
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
+
+
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Train the XGBoost next-day direction baseline and persist the model."
+    )
+    parser.add_argument("--symbols", nargs="+", default=list(data_mod.DEFAULT_SYMBOLS))
+    parser.add_argument("--start-date", default=data_mod.DEFAULT_START_DATE)
+    parser.add_argument("--end-date", default=data_mod.DEFAULT_END_DATE)
+    parser.add_argument("--adjust", default=data_mod.DEFAULT_ADJUST)
+    parser.add_argument("--train-end", default="20231231")
+    parser.add_argument("--valid-end", default="20251231")
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=None,
+        help="override the validation-selected classification threshold",
+    )
+    parser.add_argument(
+        "--model-cache",
+        default=None,
+        help="output path for the trained XGBoost model file (.ubj/.json); omitted means the "
+        "model is evaluated in memory and not persisted",
+    )
+    parser.add_argument("--report", default=str(DEFAULT_TRAIN_REPORT))
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Training CLI: fetch -> features -> labels -> split -> fit -> evaluate -> save model."""
+
+    args = _parse_args(argv)
+    symbols = tuple(args.symbols)
+    split = SplitDates(train_end=_date(args.train_end), valid_end=_date(args.valid_end))
+    dataset = build_dataset(symbols, args.start_date, args.end_date, args.adjust, split)
+    features = dataset.features
+
+    cache_path = Path(args.model_cache) if args.model_cache else None
+    fingerprint = (
+        cache_mod.build_fingerprint(
+            symbols,
+            args.start_date,
+            args.end_date,
+            args.adjust,
+            args.train_end,
+            args.valid_end,
+            args.seed,
+            features,
+            DEFAULT_PARAMS,
+        )
+        if cache_path is not None
+        else None
+    )
+    cache_mode: str | None = None
+    loaded: cache_mod.CacheLoad | None = None
+    if cache_path is not None:
+        loaded = cache_mod.load_cached(cache_path, fingerprint)
+        if loaded.model is not None:
+            cache_mode = "loaded"
+            print(f"model cache: hit {cache_path}")
+        else:
+            print(f"model cache: miss ({loaded.reason}) {cache_path}; training")
+    if cache_path is None or loaded is None or loaded.model is None:
+        model, params = fit_classifier(dataset.train_df, dataset.valid_df, features, seed=args.seed)
+        if cache_path is not None:
+            valid_scored_for_cache = predict_probabilities(model, dataset.valid_df, features)
+            threshold_for_cache = (
+                args.threshold
+                if args.threshold is not None
+                else select_threshold(valid_scored_for_cache)
+            )
+            cache_mod.save_cached(
+                model,
+                cache_path,
+                fingerprint,
+                params,
+                threshold=threshold_for_cache,
+            )
+            cache_mode = "saved"
+            print(f"model cache: saved {cache_path}")
+
+    train_scored = predict_probabilities(model, dataset.train_df, features)
+    valid_scored = predict_probabilities(model, dataset.valid_df, features)
+    test_scored = predict_probabilities(model, dataset.test_df, features)
+    threshold = args.threshold if args.threshold is not None else select_threshold(valid_scored)
+
+    exclusion_counts = (
+        dataset.labeled.loc[~dataset.labeled["eligible"], "exclude_reason"].value_counts().to_dict()
+    )
+    report_path = Path(args.report)
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report: dict[str, Any] = {
+        "strategy": "xgboost_next_day_direction",
+        "target": "sign(open_{T+1} -> close_{T+1})",
+        "created_at_utc": datetime.now(UTC).isoformat(),
+        "engine": {"xgboost": getattr(xgb, "__version__", "unknown")},
+        "universe": list(symbols),
+        "window": {
+            "start_date": args.start_date,
+            "end_date": args.end_date,
+            "adjust": args.adjust,
+        },
+        "provenance": {
+            "source": dataset.batch.source,
+            "storage": dataset.batch.storage,
+            "retrieved_at_utc": dataset.batch.retrieved_at_utc.isoformat(),
+        },
+        "features": features,
+        "model": {
+            "seed": args.seed,
+            "params": {key: _json_value(value) for key, value in params.items()},
+            "best_iteration": _json_value(getattr(model, "best_iteration", None)),
+        },
+        "model_cache": {
+            "enabled": cache_path is not None,
+            "path": str(cache_path) if cache_path is not None else None,
+            "mode": cache_mode,
+            "fingerprint": fingerprint,
+        },
+        "splits": {
+            "train_end": args.train_end,
+            "valid_end": args.valid_end,
+            "train_rows": len(dataset.train_df),
+            "valid_rows": len(dataset.valid_df),
+            "test_rows": len(dataset.test_df),
+            "excluded_rows": int((~dataset.labeled["eligible"]).sum()),
+            "exclusion_reasons": {str(k): int(v) for k, v in exclusion_counts.items()},
+        },
+        "metrics": {
+            "threshold": threshold,
+            "train": evaluate(train_scored, threshold),
+            "validation": evaluate(valid_scored, threshold),
+            "test": evaluate(test_scored, threshold),
+        },
+        "outputs": {
+            "model": str(cache_path) if cache_path is not None else None,
+            "report": str(report_path),
+        },
+    }
+    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    print(f"universe: {', '.join(symbols)}")
+    print(f"provenance: source={dataset.batch.source} storage={dataset.batch.storage}")
+    print(
+        f"rows: train={len(dataset.train_df)} valid={len(dataset.valid_df)} test={len(dataset.test_df)}"
+    )
+    print(f"threshold: {threshold:.2f}")
+    test_metrics = report["metrics"]["test"]
+    print(
+        "test: "
+        f"auc={test_metrics['auc']} acc={test_metrics['accuracy']} "
+        f"rank_ic={test_metrics['rank_ic']} "
+        f"yesterday={test_metrics['yesterday_direction_accuracy']}"
+    )
+    print(f"report: {report_path}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

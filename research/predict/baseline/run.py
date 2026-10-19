@@ -1,12 +1,13 @@
-"""End-to-end prediction baseline: fetch -> features -> labels -> train -> backtest.
+"""Combined prediction-baseline CLI: train and backtest in one pass.
 
 Run from the repository root with the project's virtual environment:
 
     ./.venv/bin/python -m research.predict.baseline.run
 
-The default path fetches remote AkShare daily bars through the project provider, trains an
-XGBoost next-day open-to-close direction classifier with walk-forward validation, and executes
-the resulting signals in AKQuant with explicit A-share costs and T+1 rules.
+This is the convenience entry point that trains and backtests in a single run and writes one JSON
+report. The same steps are split into standalone CLIs: ``research.predict.baseline.train`` (train
+and persist the model) and ``research.predict.baseline.predict`` (load a model, score, and
+backtest).
 """
 
 from __future__ import annotations
@@ -23,8 +24,7 @@ import xgboost as xgb
 
 from . import backtest as bt
 from . import data as data_mod
-from . import features as feat_mod
-from . import labels as lbl_mod
+from . import model_cache as cache_mod
 from . import train as train_mod
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -46,6 +46,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=float,
         default=None,
         help="override the validation-selected classification threshold",
+    )
+    parser.add_argument(
+        "--model-cache",
+        default=None,
+        help="opt-in path to an XGBoost model file (.ubj/.json); without it the baseline "
+        "trains from scratch on every run",
     )
     parser.add_argument("--report", default=str(DEFAULT_REPORT))
     parser.add_argument("--signals", default=str(DEFAULT_SIGNALS))
@@ -71,18 +77,56 @@ def main(argv: list[str] | None = None) -> int:
     symbols = tuple(args.symbols)
     split = train_mod.SplitDates(train_end=_date(args.train_end), valid_end=_date(args.valid_end))
 
-    batch = data_mod.fetch_bars(symbols, args.start_date, args.end_date, args.adjust)
-    feature_frame = feat_mod.compute_features(batch.frame)
-    labeled = lbl_mod.build_labels(feature_frame)
+    dataset = train_mod.build_dataset(symbols, args.start_date, args.end_date, args.adjust, split)
+    features = dataset.features
+    labeled = dataset.labeled
+    train_df = dataset.train_df
+    valid_df = dataset.valid_df
+    test_df = dataset.test_df
 
-    train_mask, valid_mask, test_mask = train_mod.split_by_date(labeled, split)
-    features = list(feat_mod.FEATURE_COLUMNS)
-
-    train_df = labeled[train_mask & labeled["eligible"]].dropna(subset=features).copy()
-    valid_df = labeled[valid_mask & labeled["eligible"]].dropna(subset=features).copy()
-    test_df = labeled[test_mask & labeled["eligible"]].dropna(subset=features).copy()
-
-    model, params = train_mod.fit_classifier(train_df, valid_df, features, seed=args.seed)
+    cache_path = Path(args.model_cache) if args.model_cache else None
+    cache_fingerprint = (
+        cache_mod.build_fingerprint(
+            symbols,
+            args.start_date,
+            args.end_date,
+            args.adjust,
+            args.train_end,
+            args.valid_end,
+            args.seed,
+            features,
+            train_mod.DEFAULT_PARAMS,
+        )
+        if cache_path is not None
+        else None
+    )
+    cache_mode: str | None = None
+    loaded: cache_mod.CacheLoad | None = None
+    if cache_path is not None:
+        loaded = cache_mod.load_cached(cache_path, cache_fingerprint)
+        if loaded.model is not None:
+            cache_mode = "loaded"
+            print(f"model cache: hit {cache_path}")
+        else:
+            print(f"model cache: miss ({loaded.reason}) {cache_path}; training")
+    if cache_path is None or loaded is None or loaded.model is None:
+        model, params = train_mod.fit_classifier(train_df, valid_df, features, seed=args.seed)
+        if cache_path is not None:
+            valid_scored_for_cache = train_mod.predict_probabilities(model, valid_df, features)
+            threshold_for_cache = (
+                args.threshold
+                if args.threshold is not None
+                else train_mod.select_threshold(valid_scored_for_cache)
+            )
+            cache_mod.save_cached(
+                model,
+                cache_path,
+                cache_fingerprint,
+                params,
+                threshold=threshold_for_cache,
+            )
+            cache_mode = "saved"
+            print(f"model cache: saved {cache_path}")
     train_scored = train_mod.predict_probabilities(model, train_df, features)
     valid_scored = train_mod.predict_probabilities(model, valid_df, features)
     test_scored = train_mod.predict_probabilities(model, test_df, features)
@@ -91,14 +135,16 @@ def main(argv: list[str] | None = None) -> int:
         args.threshold if args.threshold is not None else train_mod.select_threshold(valid_scored)
     )
 
-    signals_all = labeled[test_mask].copy()
+    signals_all = labeled[dataset.test_mask].copy()
     signals_scored = train_mod.predict_probabilities(model, signals_all, features)
     signals_scored["signal"] = (
         (signals_scored["prob"] >= threshold) & signals_scored["eligible"]
     ).astype(int)
     signal_map = bt.build_signal_map(signals_scored)
 
-    test_frame = batch.frame[pd.to_datetime(batch.frame["timestamp"]).dt.date > split.valid_end]
+    test_frame = dataset.batch.frame[
+        pd.to_datetime(dataset.batch.frame["timestamp"]).dt.date > split.valid_end
+    ]
     backtest_result = bt.run_backtest(test_frame, signal_map, symbols)
     backtest_metrics = bt.summarize_backtest(backtest_result)
     buy_and_hold = bt.buy_and_hold_returns(test_frame, symbols)
@@ -125,15 +171,21 @@ def main(argv: list[str] | None = None) -> int:
             "adjust": args.adjust,
         },
         "provenance": {
-            "source": batch.source,
-            "storage": batch.storage,
-            "retrieved_at_utc": batch.retrieved_at_utc.isoformat(),
+            "source": dataset.batch.source,
+            "storage": dataset.batch.storage,
+            "retrieved_at_utc": dataset.batch.retrieved_at_utc.isoformat(),
         },
         "features": features,
         "model": {
             "seed": args.seed,
             "params": {key: _json_value(value) for key, value in params.items()},
             "best_iteration": _json_value(getattr(model, "best_iteration", None)),
+        },
+        "model_cache": {
+            "enabled": cache_path is not None,
+            "path": str(cache_path) if cache_path is not None else None,
+            "mode": cache_mode,
+            "fingerprint": cache_fingerprint,
         },
         "splits": {
             "train_end": args.train_end,
@@ -164,7 +216,7 @@ def main(argv: list[str] | None = None) -> int:
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print(f"universe: {', '.join(symbols)}")
-    print(f"provenance: source={batch.source} storage={batch.storage}")
+    print(f"provenance: source={dataset.batch.source} storage={dataset.batch.storage}")
     print(f"rows: train={len(train_df)} valid={len(valid_df)} test={len(test_df)}")
     print(f"threshold: {threshold:.2f}")
     test_metrics = report["metrics"]["test"]
