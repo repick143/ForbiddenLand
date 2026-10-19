@@ -168,12 +168,13 @@ model = XGBClassifier(
     objective="binary:logistic",
     eval_metric="auc",
     tree_method="hist",
-    early_stopping_rounds=50,   # 验证集 50 轮不涨就停
+    early_stopping_rounds=50,  # 验证集 50 轮不涨就停
     random_state=42,
 )
 
 model.fit(
-    X_train, y_train,
+    X_train,
+    y_train,
     eval_set=[(X_valid, y_valid)],
     verbose=False,
 )
@@ -194,16 +195,22 @@ import xgboost as xgb
 params = {
     "objective": "binary:logistic",
     "eval_metric": ["auc", "logloss"],
-    "eta": 0.03, "max_depth": 4, "min_child_weight": 100,
-    "subsample": 0.8, "colsample_bytree": 0.8, "lambda": 1.0,
-    "tree_method": "hist", "seed": 42,
+    "eta": 0.03,
+    "max_depth": 4,
+    "min_child_weight": 100,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "lambda": 1.0,
+    "tree_method": "hist",
+    "seed": 42,
 }
 dtrain = xgb.DMatrix(X_train, label=y_train, feature_names=list(X_train.columns))
 dvalid = xgb.DMatrix(X_valid, label=y_valid, feature_names=list(X_valid.columns))
 dtest = xgb.DMatrix(X_test, feature_names=list(X_test.columns))
 
 booster = xgb.train(
-    params, dtrain,
+    params,
+    dtrain,
     num_boost_round=2000,
     evals=[(dtrain, "train"), (dvalid, "valid")],
     early_stopping_rounds=50,
@@ -226,9 +233,9 @@ proba = booster.predict(dtest, iteration_range=(0, booster.best_iteration + 1))
 
 ```python
 booster = model.get_booster()
-gain  = booster.get_score(importance_type="gain")    # 该特征带来的平均增益（最常用）
-cover = booster.get_score(importance_type="cover")   # 该特征覆盖的样本量
-weight = booster.get_score(importance_type="weight") # 被用作分裂点的次数
+gain = booster.get_score(importance_type="gain")  # 该特征带来的平均增益（最常用）
+cover = booster.get_score(importance_type="cover")  # 该特征覆盖的样本量
+weight = booster.get_score(importance_type="weight")  # 被用作分裂点的次数
 ```
 
 **警告：`model.feature_importances_`（默认 MDI，靠不纯度下降算）会骗人。**
@@ -242,10 +249,12 @@ weight = booster.get_score(importance_type="weight") # 被用作分裂点的次�
 ```python
 # 1) 样本外置换重要性：把某一列打乱，看样本外指标掉多少
 from sklearn.inspection import permutation_importance
+
 pi = permutation_importance(model, X_test, y_test, n_repeats=20, random_state=42)
 
 # 2) SHAP：给出每个样本、每个特征的加性贡献
 import shap
+
 explainer = shap.TreeExplainer(model)
 sv = explainer.shap_values(X_test)
 shap.summary_plot(sv, X_test)
@@ -262,7 +271,7 @@ shap.summary_plot(sv, X_test)
 ### 2.8 保存、加载、版本
 
 ```python
-model.save_model("model_2026-10-17.json")        # 推荐 json / ubj
+model.save_model("model_2026-10-17.json")  # 推荐 json / ubj
 model = XGBClassifier()
 model.load_model("model_2026-10-17.json")
 ```
@@ -320,9 +329,9 @@ model.load_model("model_2026-10-17.json")
 
 ```python
 # 正确：按时间切
-train = df[df["date"] <  "2020-01-01"]
+train = df[df["date"] < "2020-01-01"]
 valid = df[(df["date"] >= "2020-01-01") & (df["date"] < "2021-01-01")]
-test  = df[df["date"] >= "2021-01-01"]
+test = df[df["date"] >= "2021-01-01"]
 ```
 
 - **禁止** `train_test_split(shuffle=True)` 和随机 K 折：那是让模型偷看未来。
@@ -375,7 +384,7 @@ test  = df[df["date"] >= "2021-01-01"]
 ```python
 # 每天单独排名，消除"今天大盘普涨"的干扰（beta）
 df["y_rank"] = df.groupby("date")["fwd_ret_1"].rank(pct=True)
-df["y_bin"]  = (df["y_rank"] > 0.5).astype(int)   # 跑赢当日中位数 = 1
+df["y_bin"] = (df["y_rank"] > 0.5).astype(int)  # 跑赢当日中位数 = 1
 ```
 
 ### 4.2 落地要定死的六件事
@@ -409,7 +418,7 @@ import pandas as pd
 from xgboost import XGBClassifier
 
 FEATURES = ["ret_5", "ret_20", "vol_20", "turnover_20", "bias_20", "amt_ratio_5"]
-LABEL = "fwd_ret_1"      # T+1 开盘买入 → 收盘，口径与交易一致
+LABEL = "fwd_ret_1"  # T+1 开盘买入 → 收盘，口径与交易一致
 
 df = df.sort_values(["date", "code"]).reset_index(drop=True)
 
@@ -427,13 +436,22 @@ valid = df[(df["date"] >= "2021-01-01") & (df["date"] < "2022-01-01")]
 test = df[df["date"] >= "2022-01-01"]
 
 model = XGBClassifier(
-    n_estimators=1000, learning_rate=0.03, max_depth=4,
-    min_child_weight=100, subsample=0.8, colsample_bytree=0.8,
-    reg_lambda=1.0, objective="binary:logistic", eval_metric="auc",
-    tree_method="hist", early_stopping_rounds=50, random_state=42,
+    n_estimators=1000,
+    learning_rate=0.03,
+    max_depth=4,
+    min_child_weight=100,
+    subsample=0.8,
+    colsample_bytree=0.8,
+    reg_lambda=1.0,
+    objective="binary:logistic",
+    eval_metric="auc",
+    tree_method="hist",
+    early_stopping_rounds=50,
+    random_state=42,
 )
-model.fit(train[FEATURES], train["y_bin"],
-          eval_set=[(valid[FEATURES], valid["y_bin"])], verbose=False)
+model.fit(
+    train[FEATURES], train["y_bin"], eval_set=[(valid[FEATURES], valid["y_bin"])], verbose=False
+)
 
 # 4) 按天算 RankIC：每天预测排序 vs 实际收益排序的相关系数
 test = test.assign(pred=model.predict_proba(test[FEATURES])[:, 1])
