@@ -51,8 +51,9 @@ XGBoost walk-forward 训练 → 预计算信号 → AKQuant 回测。命令与�
 
 模块与职责：
 
-- `baseline/data.py`：经 `src/ecom_data` 的 `akshare` source（包装 `AkShareMarketProvider`，
-  含重试/腾讯兜底/远程缓存）拉取远程日线，保留 source/storage/retrieved_at 溯源；
+- `baseline/data.py`：经 `src/ecom_data` 拉取日线，默认 `easy-tdx` source（easy-tdx Python 库
+  + SQLite 缓存 `data/cache/ecom_data.db`），可选 `akshare` source（`AkShareMarketProvider`，
+  含重试/腾讯兜底/`data/cache/akshare` 远程缓存）；保留 source/storage/retrieved_at 溯源；
   默认股票池 `688256`/`688072`/`600183`。
 - `baseline/features.py`：14 个因果量价特征（gap、ret_1/5/10/20、均线乖离、vol_20、量比、涨跌停标志等），
   只用 T 日收盘及之前信息；涨跌停比例按板块近似（10%/20%）。
@@ -70,14 +71,22 @@ XGBoost walk-forward 训练 → 预计算信号 → AKQuant 回测。命令与�
   预测 CLI 加载（指纹写入报告溯源，不强制一致以便跨股票池推理）。
 
 实现代码统一放在 `research/predict/baseline/`（README、命令与参数见该目录的 `README.md`）；
-数据获取层迁移到 `src/ecom_data/sources/akshare.py`（ecom-data `DataSource` 契约）。
+数据获取层在 `src/ecom_data/sources/`（`easy_tdx.py` 走 Python API + SQLite 缓存，`akshare.py`
+包装 `AkShareMarketProvider`；均实现 ecom-data `DataSource` 契约）。
 
 约束与红线：默认远程数据（本次运行实际走了 Tencent historical fallback，provenance 已记录）；
 不读本地未验证快照；新增依赖 `xgboost`（`pyproject.toml` 的 `research` 组）。
 
-验证：31 个确定性测试覆盖特征因果/涨跌停、标签口径与排除、切分/训练/评估、信号回测、数据归一化、
-模型文件缓存（指纹/阈值/无元数据加载）、训练与预测 CLI 离线端到端（取数注入 fake source）；
-全量 `pytest` 239 passed；ruff/compileall/diff 检查通过。
+验证：确定性测试覆盖特征因果/涨跌停、标签口径与排除、切分/训练/评估、信号回测、数据归一化、
+模型文件缓存（指纹/阈值/无元数据加载）、训练与预测 CLI 离线端到端（取数注入 fake source）、
+easy-tdx 源适配器（fake MacClient + 临时 SQLite：枚举映射、缓存命中/未命中、空响应不落缓存、
+断线重连）；全量 `pytest` 254 passed；ruff/compileall/diff 检查通过。
+
+330 只股票池首跑（2026-10-19，easy-tdx 源 + SQLite 缓存，训练至 2023-12-31、验证 2024-2025、
+测试 2026）：`601059` TDX 无日线被跳过（写入报告 `skipped`），其余 329 只全部取数；总耗时约
+101s（取数 97.4s、因子 0.9s、标签 0.6s、训练 1.7s）；测试 AUC≈0.518、RankIC≈0.006、准确率
+≈52.3%，接近随机，**仍未发现可交易信号**；模型与训练报告已落盘（`data/cache/`、
+`reports/`，均不提交 Git）。
 
 首次真实运行（2026-10-19，训练至 2023-12-31、验证 2024-2025、测试 2026-01~10）结果诚实且符合
 预期：测试 AUC≈0.476、RankIC≈-0.006、准确率≈50.4%，**未发现可交易信号**；回测 +45.7% 接近

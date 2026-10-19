@@ -38,6 +38,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--start-date", default=data_mod.DEFAULT_START_DATE)
     parser.add_argument("--end-date", default=data_mod.DEFAULT_END_DATE)
     parser.add_argument("--adjust", default=data_mod.DEFAULT_ADJUST)
+    parser.add_argument(
+        "--source",
+        default="easy-tdx",
+        help="ecom-data source name for daily bars: easy-tdx (default, fast) or akshare",
+    )
+    parser.add_argument(
+        "--bar-count",
+        type=int,
+        default=data_mod.DEFAULT_BAR_COUNT,
+        help="maximum bars requested per symbol (easy-tdx QFQ is faster with 2500)",
+    )
     parser.add_argument("--train-end", default="20231231")
     parser.add_argument("--valid-end", default="20251231")
     parser.add_argument("--seed", type=int, default=42)
@@ -77,7 +88,15 @@ def main(argv: list[str] | None = None) -> int:
     symbols = tuple(args.symbols)
     split = train_mod.SplitDates(train_end=_date(args.train_end), valid_end=_date(args.valid_end))
 
-    dataset = train_mod.build_dataset(symbols, args.start_date, args.end_date, args.adjust, split)
+    dataset = train_mod.build_dataset(
+        symbols,
+        args.start_date,
+        args.end_date,
+        args.adjust,
+        split,
+        source=data_mod.get_source(args.source),
+        count=args.bar_count,
+    )
     features = dataset.features
     labeled = dataset.labeled
     train_df = dataset.train_df
@@ -96,6 +115,8 @@ def main(argv: list[str] | None = None) -> int:
             args.seed,
             features,
             train_mod.DEFAULT_PARAMS,
+            args.source,
+            args.bar_count,
         )
         if cache_path is not None
         else None
@@ -165,10 +186,13 @@ def main(argv: list[str] | None = None) -> int:
             "xgboost": getattr(xgb, "__version__", "unknown"),
         },
         "universe": list(symbols),
+        "skipped": {str(k): str(v) for k, v in dataset.batch.skipped.items()},
         "window": {
             "start_date": args.start_date,
             "end_date": args.end_date,
             "adjust": args.adjust,
+            "source": args.source,
+            "bar_count": args.bar_count,
         },
         "provenance": {
             "source": dataset.batch.source,
@@ -216,6 +240,11 @@ def main(argv: list[str] | None = None) -> int:
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print(f"universe: {', '.join(symbols)}")
+    if dataset.batch.skipped:
+        print(
+            "skipped: "
+            + "; ".join(f"{symbol}: {reason}" for symbol, reason in dataset.batch.skipped.items())
+        )
     print(f"provenance: source={dataset.batch.source} storage={dataset.batch.storage}")
     print(f"rows: train={len(train_df)} valid={len(valid_df)} test={len(test_df)}")
     print(f"threshold: {threshold:.2f}")

@@ -129,6 +129,134 @@ def test_train_cli_persists_model_and_report(
     assert report["metrics"]["test"]["auc"] is not None
     assert report["metrics"]["threshold"] > 0
     assert report["outputs"]["model"] == str(model_path)
+    assert report["symbols_file"] is None
+    assert report["skipped"] == {}
+    assert set(report["timing"]) == {
+        "fetch_seconds",
+        "features_seconds",
+        "labels_seconds",
+        "split_seconds",
+        "train_seconds",
+        "total_seconds",
+    }
+    assert report["timing"]["train_seconds"] > 0
+
+
+def test_train_cli_symbols_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _install_fake_source(monkeypatch)
+    symbols_file = tmp_path / "symbols.txt"
+    symbols_file.write_text(
+        "# comment line\n688256 寒武纪\n600183 生益科技\n\n688256\n",
+        encoding="utf-8",
+    )
+    model_path = tmp_path / "model.ubj"
+    report_path = tmp_path / "train.json"
+    rc = train_mod.main(
+        [
+            "--symbols-file",
+            str(symbols_file),
+            "--start-date",
+            "20240101",
+            "--end-date",
+            "20241231",
+            "--train-end",
+            "20240501",
+            "--valid-end",
+            "20240801",
+            "--model-cache",
+            str(model_path),
+            "--report",
+            str(report_path),
+        ]
+    )
+    assert rc == 0
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["symbols_file"] == str(symbols_file)
+    assert report["universe"] == ["688256", "600183"]
+    assert model_path.is_file()
+
+
+def test_train_cli_symbols_file_conflicts_with_symbols(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _install_fake_source(monkeypatch)
+    symbols_file = tmp_path / "symbols.txt"
+    symbols_file.write_text("688256\n", encoding="utf-8")
+    rc = train_mod.main(
+        [
+            "--symbols",
+            "688256",
+            "--symbols-file",
+            str(symbols_file),
+            "--start-date",
+            "20240101",
+            "--end-date",
+            "20241231",
+            "--train-end",
+            "20240501",
+            "--valid-end",
+            "20240801",
+        ]
+    )
+    assert rc == 2
+
+
+def test_train_cli_symbols_file_rejects_invalid_code(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _install_fake_source(monkeypatch)
+    symbols_file = tmp_path / "symbols.txt"
+    symbols_file.write_text("12345\n", encoding="utf-8")
+    rc = train_mod.main(
+        [
+            "--symbols-file",
+            str(symbols_file),
+            "--start-date",
+            "20240101",
+            "--end-date",
+            "20241231",
+            "--train-end",
+            "20240501",
+            "--valid-end",
+            "20240801",
+        ]
+    )
+    assert rc == 2
+
+
+def test_train_cli_accepts_source_and_bar_count(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _install_fake_source(monkeypatch)
+    report_path = tmp_path / "train.json"
+    rc = train_mod.main(
+        [
+            "--symbols",
+            "688256",
+            "600183",
+            "--source",
+            "easy-tdx",
+            "--bar-count",
+            "2500",
+            "--start-date",
+            "20240101",
+            "--end-date",
+            "20241231",
+            "--train-end",
+            "20240501",
+            "--valid-end",
+            "20240801",
+            "--report",
+            str(report_path),
+        ]
+    )
+    assert rc == 0
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["window"]["source"] == "easy-tdx"
+    assert report["window"]["bar_count"] == 2500
 
 
 def test_predict_cli_loads_model_and_backtests(

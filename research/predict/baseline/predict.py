@@ -43,6 +43,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--end-date", default=data_mod.DEFAULT_END_DATE)
     parser.add_argument("--adjust", default=data_mod.DEFAULT_ADJUST)
     parser.add_argument(
+        "--source",
+        default="easy-tdx",
+        help="ecom-data source name for daily bars: easy-tdx (default, fast) or akshare",
+    )
+    parser.add_argument(
+        "--bar-count",
+        type=int,
+        default=data_mod.DEFAULT_BAR_COUNT,
+        help="maximum bars requested per symbol (easy-tdx QFQ is faster with 2500)",
+    )
+    parser.add_argument(
         "--valid-end",
         default="20251231",
         help="prediction/backtest window starts the trading day after this cutoff",
@@ -113,7 +124,15 @@ def main(argv: list[str] | None = None) -> int:
     model = loaded.model
 
     split = train_mod.SplitDates(train_end=_date(args.valid_end), valid_end=_date(args.valid_end))
-    dataset = train_mod.build_dataset(symbols, args.start_date, args.end_date, args.adjust, split)
+    dataset = train_mod.build_dataset(
+        symbols,
+        args.start_date,
+        args.end_date,
+        args.adjust,
+        split,
+        source=data_mod.get_source(args.source),
+        count=args.bar_count,
+    )
     features = dataset.features
     threshold = (
         args.threshold
@@ -154,10 +173,13 @@ def main(argv: list[str] | None = None) -> int:
             "xgboost": getattr(xgb, "__version__", "unknown"),
         },
         "universe": list(symbols),
+        "skipped": {str(k): str(v) for k, v in dataset.batch.skipped.items()},
         "window": {
             "start_date": args.start_date,
             "end_date": args.end_date,
             "adjust": args.adjust,
+            "source": args.source,
+            "bar_count": args.bar_count,
             "scoring_start": (split.valid_end + timedelta(days=1)).isoformat(),
         },
         "provenance": {
@@ -195,6 +217,11 @@ def main(argv: list[str] | None = None) -> int:
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print(f"universe: {', '.join(symbols)}")
+    if dataset.batch.skipped:
+        print(
+            "skipped: "
+            + "; ".join(f"{symbol}: {reason}" for symbol, reason in dataset.batch.skipped.items())
+        )
     print(f"model: {model_path} (fingerprint={loaded.fingerprint})")
     print(f"provenance: source={dataset.batch.source} storage={dataset.batch.storage}")
     print(f"rows scored: {len(signals_scored)} eligible={int(signals_scored['eligible'].sum())}")

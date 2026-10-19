@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -67,6 +68,7 @@ class Dataset:
     train_df: pd.DataFrame
     valid_df: pd.DataFrame
     test_df: pd.DataFrame
+    timing: dict[str, float]
 
 
 def build_dataset(
@@ -75,17 +77,29 @@ def build_dataset(
     end_date: str,
     adjust: str,
     split: SplitDates,
+    *,
+    source: data_mod.DataSource | None = None,
+    count: int = data_mod.DEFAULT_BAR_COUNT,
 ) -> Dataset:
     """Run the fetch -> features -> labels -> chronological split chain once."""
 
-    batch = data_mod.fetch_bars(symbols, start_date, end_date, adjust)
+    timing: dict[str, float] = {}
+    started = time.perf_counter()
+    batch = data_mod.fetch_bars(symbols, start_date, end_date, adjust, count=count, source=source)
+    timing["fetch_seconds"] = time.perf_counter() - started
+    started = time.perf_counter()
     feature_frame = feat_mod.compute_features(batch.frame)
+    timing["features_seconds"] = time.perf_counter() - started
+    started = time.perf_counter()
     labeled = lbl_mod.build_labels(feature_frame)
+    timing["labels_seconds"] = time.perf_counter() - started
+    started = time.perf_counter()
     train_mask, valid_mask, test_mask = split_by_date(labeled, split)
     features = list(feat_mod.FEATURE_COLUMNS)
     train_df = labeled[train_mask & labeled["eligible"]].dropna(subset=features).copy()
     valid_df = labeled[valid_mask & labeled["eligible"]].dropna(subset=features).copy()
     test_df = labeled[test_mask & labeled["eligible"]].dropna(subset=features).copy()
+    timing["split_seconds"] = time.perf_counter() - started
     return Dataset(
         batch=batch,
         labeled=labeled,
@@ -96,6 +110,7 @@ def build_dataset(
         train_df=train_df,
         valid_df=valid_df,
         test_df=test_df,
+        timing=timing,
     )
 
 
@@ -272,9 +287,28 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Train the XGBoost next-day direction baseline and persist the model."
     )
     parser.add_argument("--symbols", nargs="+", default=list(data_mod.DEFAULT_SYMBOLS))
+    parser.add_argument(
+        "--symbols-file",
+        default=None,
+        help="path to a text file with the training universe, one 6-digit A-share code per line; "
+        "lines starting with '#' are comments. Mutually exclusive with --symbols.",
+    )
     parser.add_argument("--start-date", default=data_mod.DEFAULT_START_DATE)
     parser.add_argument("--end-date", default=data_mod.DEFAULT_END_DATE)
     parser.add_argument("--adjust", default=data_mod.DEFAULT_ADJUST)
+    parser.add_argument(
+        "--source",
+        default="easy-tdx",
+        help="ecom-data source name for daily bars: easy-tdx (default, fast) or akshare "
+        "(disk-cached remote AkShare)",
+    )
+    parser.add_argument(
+        "--bar-count",
+        type=int,
+        default=data_mod.DEFAULT_BAR_COUNT,
+        help="maximum bars requested per symbol (easy-tdx QFQ skips deep-history recompute "
+        "with 2500; akshare ignores it)",
+    )
     parser.add_argument("--train-end", default="20231231")
     parser.add_argument("--valid-end", default="20251231")
     parser.add_argument("--seed", type=int, default=42)
@@ -294,13 +328,55 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _load_symbols_file(path: Path) -> tuple[str, ...]:
+    """Read a symbol list file: one 6-digit code per line, '#' comments, blank lines skipped."""
+
+    if not path.is_file():
+        raise FileNotFoundError(f"symbols file not found: {path}")
+    symbols: list[str] = []
+    for line_no, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        code = line.split()[0]
+        if len(code) != 6 or not code.isdigit():
+            raise ValueError(f"{path}:{line_no}: expected a 6-digit A-share code, got {code!r}")
+        symbols.append(code)
+    if not symbols:
+        raise ValueError(f"{path}: no symbols found")
+    return tuple(dict.fromkeys(symbols))
+
+
+def _resolve_symbols(args: argparse.Namespace) -> tuple[str, ...]:
+    if args.symbols_file is not None:
+        if args.symbols != list(data_mod.DEFAULT_SYMBOLS):
+            raise ValueError("--symbols and --symbols-file are mutually exclusive")
+        return _load_symbols_file(Path(args.symbols_file))
+    return tuple(args.symbols)
+
+
 def main(argv: list[str] | None = None) -> int:
     """Training CLI: fetch -> features -> labels -> split -> fit -> evaluate -> save model."""
 
     args = _parse_args(argv)
-    symbols = tuple(args.symbols)
+    try:
+        symbols = _resolve_symbols(args)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"train: {exc}")
+        return 2
+    symbols_file = str(Path(args.symbols_file)) if args.symbols_file else None
+    started_total = time.perf_counter()
     split = SplitDates(train_end=_date(args.train_end), valid_end=_date(args.valid_end))
-    dataset = build_dataset(symbols, args.start_date, args.end_date, args.adjust, split)
+    data_source = data_mod.get_source(args.source)
+    dataset = build_dataset(
+        symbols,
+        args.start_date,
+        args.end_date,
+        args.adjust,
+        split,
+        source=data_source,
+        count=args.bar_count,
+    )
     features = dataset.features
 
     cache_path = Path(args.model_cache) if args.model_cache else None
@@ -315,6 +391,8 @@ def main(argv: list[str] | None = None) -> int:
             args.seed,
             features,
             DEFAULT_PARAMS,
+            args.source,
+            args.bar_count,
         )
         if cache_path is not None
         else None
@@ -329,7 +407,9 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print(f"model cache: miss ({loaded.reason}) {cache_path}; training")
     if cache_path is None or loaded is None or loaded.model is None:
+        started_train = time.perf_counter()
         model, params = fit_classifier(dataset.train_df, dataset.valid_df, features, seed=args.seed)
+        dataset.timing["train_seconds"] = time.perf_counter() - started_train
         if cache_path is not None:
             valid_scored_for_cache = predict_probabilities(model, dataset.valid_df, features)
             threshold_for_cache = (
@@ -351,6 +431,7 @@ def main(argv: list[str] | None = None) -> int:
     valid_scored = predict_probabilities(model, dataset.valid_df, features)
     test_scored = predict_probabilities(model, dataset.test_df, features)
     threshold = args.threshold if args.threshold is not None else select_threshold(valid_scored)
+    dataset.timing["total_seconds"] = time.perf_counter() - started_total
 
     exclusion_counts = (
         dataset.labeled.loc[~dataset.labeled["eligible"], "exclude_reason"].value_counts().to_dict()
@@ -363,11 +444,15 @@ def main(argv: list[str] | None = None) -> int:
         "created_at_utc": datetime.now(UTC).isoformat(),
         "engine": {"xgboost": getattr(xgb, "__version__", "unknown")},
         "universe": list(symbols),
+        "skipped": {str(k): str(v) for k, v in dataset.batch.skipped.items()},
         "window": {
             "start_date": args.start_date,
             "end_date": args.end_date,
             "adjust": args.adjust,
+            "source": args.source,
+            "bar_count": args.bar_count,
         },
+        "symbols_file": symbols_file,
         "provenance": {
             "source": dataset.batch.source,
             "storage": dataset.batch.storage,
@@ -385,6 +470,7 @@ def main(argv: list[str] | None = None) -> int:
             "mode": cache_mode,
             "fingerprint": fingerprint,
         },
+        "timing": {key: round(value, 3) for key, value in dataset.timing.items()},
         "splits": {
             "train_end": args.train_end,
             "valid_end": args.valid_end,
@@ -408,9 +494,23 @@ def main(argv: list[str] | None = None) -> int:
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print(f"universe: {', '.join(symbols)}")
+    if dataset.batch.skipped:
+        print(
+            "skipped: "
+            + "; ".join(f"{symbol}: {reason}" for symbol, reason in dataset.batch.skipped.items())
+        )
     print(f"provenance: source={dataset.batch.source} storage={dataset.batch.storage}")
     print(
         f"rows: train={len(dataset.train_df)} valid={len(dataset.valid_df)} test={len(dataset.test_df)}"
+    )
+    timing = dataset.timing
+    print(
+        "timing: "
+        f"fetch={timing.get('fetch_seconds', 0):.1f}s "
+        f"features={timing.get('features_seconds', 0):.1f}s "
+        f"labels={timing.get('labels_seconds', 0):.1f}s "
+        f"train={timing.get('train_seconds', 0):.1f}s "
+        f"total={timing.get('total_seconds', 0):.1f}s"
     )
     print(f"threshold: {threshold:.2f}")
     test_metrics = report["metrics"]["test"]

@@ -25,6 +25,8 @@ def _fingerprint(**overrides: Any) -> str:
         "seed": 42,
         "features": ["a", "b"],
         "default_params": {"max_depth": 6},
+        "source": "easy-tdx",
+        "bar_count": 2500,
     }
     base.update(overrides)
     return build_fingerprint(**base)
@@ -53,6 +55,8 @@ def test_fingerprint_is_stable_and_sensitive_to_configuration() -> None:
     assert baseline != _fingerprint(seed=7)
     assert baseline != _fingerprint(features=["a"])
     assert baseline != _fingerprint(default_params={"max_depth": 8})
+    assert baseline != _fingerprint(source="akshare")
+    assert baseline != _fingerprint(bar_count=8000)
 
 
 def test_save_then_load_roundtrip(tmp_path: Path) -> None:

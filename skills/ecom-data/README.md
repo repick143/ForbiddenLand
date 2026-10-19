@@ -8,6 +8,10 @@ The library lives at `src/ecom_data` (import `ecom_data`, or use the
 `ecom-data` console command from the project `.venv`). This skill only
 references it; see `SKILL.md` for the contract.
 
+The bundled `easy-tdx` source uses the easy-tdx Python library (`MacClient`,
+one persistent connection) and writes every response back to the SQLite cache
+(`data/cache/ecom_data.db`), so repeated reads are served locally.
+
 ## Quick Start
 
 ```bash

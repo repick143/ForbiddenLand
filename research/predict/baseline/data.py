@@ -25,6 +25,7 @@ DEFAULT_SYMBOLS = ("688256", "688072", "600183")
 DEFAULT_START_DATE = "20190101"
 DEFAULT_END_DATE = "20261016"
 DEFAULT_ADJUST = "qfq"
+DEFAULT_BAR_COUNT = 2500
 
 _REQUIRED_KEYS = frozenset({"datetime", "open", "high", "low", "close"})
 
@@ -37,6 +38,7 @@ class PredictDataBatch:
     source: str
     storage: str
     retrieved_at_utc: datetime
+    skipped: dict[str, str]
 
 
 def _parse_date(value: str) -> date:
@@ -98,22 +100,24 @@ def fetch_bars(
     start_date: str = DEFAULT_START_DATE,
     end_date: str = DEFAULT_END_DATE,
     adjust: str = DEFAULT_ADJUST,
+    count: int = DEFAULT_BAR_COUNT,
     *,
     source: DataSource | None = None,
 ) -> PredictDataBatch:
-    """Fetch daily bars through the ecom-data ``akshare`` source and window them by date.
+    """Fetch daily bars through an ecom-data source and window them by date.
 
     ``source`` is injectable so tests can validate the mapping without network calls; the default
-    path uses the registered ecom-data source named ``akshare``.
+    path uses the registered ecom-data source named ``easy-tdx`` (cache-through SQLite).
     """
 
-    configured = source or get_source("akshare")
+    configured = source or get_source("easy-tdx")
     start = _parse_date(start_date)
     end = _parse_date(end_date)
     if start > end:
         raise ValueError("start_date must not be later than end_date")
 
     frames: list[pd.DataFrame] = []
+    skipped: dict[str, str] = {}
     for symbol in symbols:
         try:
             bars = configured.fetch_bars(
@@ -122,7 +126,7 @@ def fetch_bars(
                     code=symbol,
                     period="DAILY",
                     adjust=adjust,
-                    count=8000,
+                    count=count,
                     start=0,
                 )
             )
@@ -132,11 +136,15 @@ def fetch_bars(
                 & (frame["timestamp"] <= pd.Timestamp(end))
             ]
             frames.append(frame)
-        except Exception as exc:
-            raise RuntimeError(
-                f"Unable to load ecom-data bars for {symbol} between "
-                f"{start_date} and {end_date}: {exc}"
-            ) from exc
+        except Exception as exc:  # noqa: BLE001  # keep partial results; record the failing symbol
+            skipped[symbol] = str(exc)
+
+    if not frames:
+        reasons = "; ".join(f"{symbol}: {reason}" for symbol, reason in skipped.items())
+        raise RuntimeError(
+            f"Unable to load ecom-data bars for any of {symbols} between "
+            f"{start_date} and {end_date}: {reasons}"
+        )
 
     source_name, storage, retrieved_at = _batch_provenance(configured, symbols)
     return PredictDataBatch(
@@ -148,4 +156,5 @@ def fetch_bars(
         source=source_name,
         storage=storage,
         retrieved_at_utc=retrieved_at,
+        skipped=skipped,
     )

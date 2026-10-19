@@ -48,6 +48,8 @@ def build_fingerprint(
     seed: int,
     features: list[str],
     default_params: dict[str, Any],
+    source: str = "easy-tdx",
+    bar_count: int = 2500,
 ) -> str:
     """SHA-256 over the training configuration that must match for a cache hit."""
 
@@ -61,6 +63,8 @@ def build_fingerprint(
         "seed": seed,
         "features": sorted(features),
         "default_params": default_params,
+        "source": source,
+        "bar_count": bar_count,
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
 

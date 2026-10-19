@@ -106,3 +106,17 @@ def test_fetch_bars_rejects_inverted_window() -> None:
     source = FakeSource()
     with pytest.raises(ValueError, match="start_date"):
         data_mod.fetch_bars(("688256",), "20240131", "20240101", source=source)
+
+
+def test_fetch_bars_skips_empty_symbols_and_keeps_partial() -> None:
+    source = FakeSource({"688256": _fake_bars("688256"), "600183": []})
+    batch = data_mod.fetch_bars(("688256", "600183"), "20240101", "20240131", source=source)
+    assert set(batch.frame["symbol"]) == {"688256"}
+    assert set(batch.skipped) == {"600183"}
+    assert "no bars" in batch.skipped["600183"]
+
+
+def test_fetch_bars_raises_when_all_symbols_fail() -> None:
+    source = FakeSource({"688256": [], "600183": []})
+    with pytest.raises(RuntimeError, match="for any of"):
+        data_mod.fetch_bars(("688256", "600183"), "20240101", "20240131", source=source)

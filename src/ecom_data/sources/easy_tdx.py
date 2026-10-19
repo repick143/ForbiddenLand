@@ -1,118 +1,257 @@
-"""easy-tdx data-source adapter.
+"""easy-tdx data-source adapter backed by the easy-tdx Python API and the ecom-data cache.
 
-Talks to the wrapped ``easy-tdx`` CLI binary and parses its JSON output. The
-adapter never depends on easy-tdx internals, so upgrading the binary keeps the
-adapter stable.
+Fetching uses ``MacClient`` (one persistent connection, auto-paginated K-lines) instead of
+spawning the ``easy-tdx`` binary. Every successful bar/quote response is written back to the
+ecom-data SQLite cache (``data/cache/ecom_data.db``); a later request with the same
+source/market/code/period/adjust/bar_time that already covers the requested window is served
+from cache without touching the TDX server.
 """
 
 from __future__ import annotations
 
-import json
-import os
-import re
-import shutil
-import subprocess
+from collections.abc import Callable
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
-from ecom_data.config import PROJECT_ROOT, default_source_timeout
+import easy_tdx
+import pandas as pd
+from easy_tdx import Adjust, MacClient, Market, Period
+
+from ecom_data.config import default_db_path
 from ecom_data.errors import DataSourceError
 from ecom_data.model import BarRequest, QuoteRequest
 from ecom_data.sources import DataSource, register_source
+from ecom_data.storage import Cache
 
-_VERSION_RE = re.compile(r"version\s+([0-9][^\s,]*)")
-_JSON_OPTION = ("--output", "json")
+_MARKET_MAP = {"SH": Market.SH, "SZ": Market.SZ, "BJ": Market.BJ}
+_PERIOD_MAP = {
+    "DAILY": Period.DAILY,
+    "WEEKLY": Period.WEEKLY,
+    "MONTHLY": Period.MONTHLY,
+    "QUARTERLY": Period.QUARTERLY,
+    "YEARLY": Period.YEARLY,
+    "MIN1": Period.MIN_1,
+    "MIN5": Period.MIN_5,
+    "MIN15": Period.MIN_15,
+    "MIN30": Period.MIN_30,
+    "MIN60": Period.MIN_60,
+}
+_ADJUST_MAP = {"NONE": Adjust.NONE, "QFQ": Adjust.QFQ, "HFQ": Adjust.HFQ}
 
 
-def _resolve_binary() -> str:
-    local = PROJECT_ROOT / ".venv" / "bin" / "easy-tdx"
-    if local.is_file() and os.access(local, os.X_OK):
-        return str(local)
-    found = shutil.which("easy-tdx")
-    if found:
-        return found
-    raise DataSourceError(
-        "easy-tdx binary not found; install the project environment first "
-        "(python scripts/bootstrap.py)"
-    )
+def _slice_tail(bars: list[dict[str, Any]], start: int, count: int) -> list[dict[str, Any]]:
+    """Take the requested window from the tail of a stored series."""
+
+    if not bars:
+        return []
+    end = None if start == 0 else len(bars) - start
+    begin = max(0, len(bars) - (start + count))
+    return bars[begin:end]
+
+
+def _expired(fetched_at: str, ttl_seconds: int | None) -> bool:
+    if not ttl_seconds:
+        return False
+    fetched = datetime.fromisoformat(fetched_at)
+    return (datetime.now(UTC) - fetched).total_seconds() > ttl_seconds
+
+
+def _scalar(value: Any) -> Any:
+    if hasattr(value, "item"):
+        return value.item()
+    if hasattr(value, "isoformat"):
+        return value.isoformat(timespec="seconds")
+    return value
+
+
+def _df_to_bars(frame: pd.DataFrame) -> list[dict[str, Any]]:
+    """Convert a MacClient K-line frame into ecom-data bar dicts."""
+
+    if frame is None or frame.empty:
+        return []
+    rows: list[dict[str, Any]] = []
+    for _, row in frame.iterrows():
+        bar: dict[str, Any] = {
+            "datetime": _scalar(pd.Timestamp(row["datetime"])),
+            "open": _scalar(row["open"]),
+            "high": _scalar(row["high"]),
+            "low": _scalar(row["low"]),
+            "close": _scalar(row["close"]),
+            "vol": _scalar(row["vol"]),
+        }
+        for extra in ("amount", "float_shares"):
+            if extra in row.index and pd.notna(row[extra]):
+                bar[extra] = _scalar(row[extra])
+        rows.append(bar)
+    return rows
 
 
 class EasyTdxSource(DataSource):
+    """Cache-through easy-tdx source using the easy-tdx Python package."""
+
     name = "easy-tdx"
 
-    def __init__(self, binary: str | None = None, timeout: float | None = None) -> None:
-        self.binary = binary or _resolve_binary()
-        self.timeout = timeout if timeout is not None else default_source_timeout()
-        self._version: str | None = None
+    def __init__(
+        self,
+        db_path: Path | None = None,
+        client_factory: Callable[[], MacClient] | None = None,
+        ttl_seconds: int | None = None,
+    ) -> None:
+        self._cache = Cache(db_path or default_db_path())
+        self._client_factory = client_factory or MacClient.from_best_host
+        self._client: MacClient | None = None
+        self._ttl_seconds = ttl_seconds
+        self.last_fetch: dict[str, dict[str, Any]] = {}
 
     @property
     def source_version(self) -> str | None:
-        if self._version is None:
-            match = _VERSION_RE.search(self._run("--version"))
-            self._version = match.group(1) if match else None
-        return self._version
+        return getattr(easy_tdx, "__version__", None)
 
-    def _run(self, *args: str) -> str:
+    def close(self) -> None:
+        if self._client is not None:
+            try:
+                self._client.close()
+            except Exception:  # noqa: BLE001, S110  # cleanup must not fail the source
+                pass
+            self._client = None
+
+    def _ensure_client(self) -> MacClient:
+        if self._client is None:
+            try:
+                self._client = self._client_factory()
+            except Exception as exc:
+                raise DataSourceError(f"easy-tdx connect failed: {exc}") from exc
+        return self._client
+
+    def _call(self, method: str, *args: Any, **kwargs: Any) -> Any:
+        client = self._ensure_client()
         try:
-            proc = subprocess.run(
-                [self.binary, *args],
-                capture_output=True,
-                text=True,
-                timeout=self.timeout,
-                check=False,
-            )
-        except subprocess.TimeoutExpired as exc:
+            return getattr(client, method)(*args, **kwargs)
+        except Exception:  # noqa: BLE001  # transient TDX drop; reconnect once below
+            self.close()
+            try:
+                return getattr(self._ensure_client(), method)(*args, **kwargs)
+            except Exception as retry_exc:
+                raise DataSourceError(
+                    f"easy-tdx {method} failed for {args}: {retry_exc}"
+                ) from retry_exc
+
+    def _market(self, value: str) -> Market:
+        try:
+            return _MARKET_MAP[value.upper()]
+        except KeyError as exc:
             raise DataSourceError(
-                f"easy-tdx timed out after {self.timeout}s: {' '.join(args)}"
+                f"easy-tdx unsupported market {value!r}; supported: {', '.join(_MARKET_MAP)}"
             ) from exc
-        if proc.returncode != 0:
-            detail = (proc.stderr or proc.stdout or "").strip()[:500]
+
+    def _period(self, value: str) -> Period:
+        key = value.upper().replace("_", "")
+        try:
+            return _PERIOD_MAP[key]
+        except KeyError as exc:
             raise DataSourceError(
-                f"easy-tdx failed ({proc.returncode}) for {' '.join(args)}: {detail}"
-            )
-        return proc.stdout
+                f"easy-tdx unsupported period {value!r}; supported: {', '.join(_PERIOD_MAP)}"
+            ) from exc
+
+    def _adjust(self, value: str) -> Adjust:
+        try:
+            return _ADJUST_MAP[value.upper()]
+        except KeyError as exc:
+            raise DataSourceError(
+                f"easy-tdx unsupported adjust {value!r}; supported: {', '.join(_ADJUST_MAP)}"
+            ) from exc
+
+    def _mark_fetch(
+        self,
+        request: BarRequest,
+        *,
+        cached: bool,
+        fetched_at: str | None = None,
+    ) -> None:
+        self.last_fetch[request.code] = {
+            "source": self.name,
+            "storage": "ecom-data sqlite cache" if cached else "ecom-data source",
+            "retrieved_at_utc": (
+                datetime.fromisoformat(fetched_at) if fetched_at else datetime.now(UTC)
+            ),
+        }
 
     def fetch_bars(self, request: BarRequest) -> list[dict[str, Any]]:
-        args = [
-            "kline",
+        entry = self._cache.get_bar_series(
+            self.name,
             request.market,
             request.code,
-            "--period",
             request.period,
-            "--adjust",
             request.adjust,
-            "--count",
-            str(request.count),
-            "--start",
-            str(request.start),
-            *_JSON_OPTION,
-        ]
-        if request.bar_time == "end":
-            args += ["--bar-time", "end"]
-        try:
-            payload = json.loads(self._run(*args))
-        except json.JSONDecodeError as exc:
-            raise DataSourceError(f"easy-tdx returned malformed JSON for {request}: {exc}") from exc
-        if not isinstance(payload, list):
-            raise DataSourceError(
-                f"easy-tdx kline expected a JSON list, got {type(payload).__name__}"
+            request.bar_time,
+        )
+        if (
+            entry is not None
+            and entry.row_count >= request.start + request.count
+            and not _expired(entry.fetched_at, self._ttl_seconds)
+        ):
+            self._mark_fetch(request, cached=True, fetched_at=entry.fetched_at)
+            return _slice_tail(entry.bars, request.start, request.count)
+
+        frame = self._call(
+            "get_stock_kline",
+            self._market(request.market),
+            request.code,
+            self._period(request.period),
+            start=request.start,
+            count=request.start + request.count,
+            adjust=self._adjust(request.adjust),
+            bar_time=request.bar_time,
+        )
+        bars = _df_to_bars(frame)
+        if bars:
+            self._cache.put_bar_series(
+                self.name,
+                request.market,
+                request.code,
+                request.period,
+                request.adjust,
+                request.bar_time,
+                bars,
+                self.source_version,
             )
-        return [dict(item) for item in payload]
+        self._mark_fetch(request, cached=False)
+        return _slice_tail(bars, request.start, request.count)
 
     def fetch_quote(self, request: QuoteRequest) -> dict[str, Any] | None:
-        try:
-            payload = json.loads(self._run("quote", f"{request.market} {request.code}"))
-        except json.JSONDecodeError as exc:
-            raise DataSourceError(f"easy-tdx returned malformed JSON for {request}: {exc}") from exc
-        if not isinstance(payload, list) or not payload:
+        entry = self._cache.get_quote(self.name, request.market, request.code)
+        if entry is not None and not _expired(entry.fetched_at, self._ttl_seconds):
+            return entry.payload
+
+        frame = self._call("get_stock_quotes", [(self._market(request.market), request.code)])
+        if frame is None or frame.empty:
             return None
-        return dict(payload[0])
+        row = frame.iloc[0]
+        payload = {str(key): _scalar(value) for key, value in row.items() if pd.notna(value)}
+        payload["market"] = request.market
+        payload["code"] = request.code
+        self._cache.put_quote(
+            self.name,
+            request.market,
+            request.code,
+            payload,
+            self.source_version,
+        )
+        return payload
 
     def ping(self) -> dict[str, Any]:
         try:
-            payload = json.loads(self._run("ping"))
-        except json.JSONDecodeError:
-            return {"reachable": False, "detail": "ping output was not JSON"}
-        return {"reachable": True, "servers": payload}
+            client = self._client_factory()
+        except Exception as exc:  # noqa: BLE001  # probe must not raise
+            return {"reachable": False, "detail": str(exc)}
+        try:
+            return {"reachable": True, "servers": [getattr(client, "host", "python-api")]}
+        finally:
+            try:
+                client.close()
+            except Exception:  # noqa: BLE001, S110  # probe cleanup best-effort
+                pass
 
 
 register_source(EasyTdxSource())
