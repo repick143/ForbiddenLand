@@ -19,6 +19,8 @@
 | `backtest-and-leakage-redlines.md` | 回测与泄漏红线（T+1/涨跌停/成本/前视/复现） | 2026-10-15 | AGENTS.md、frontier_overview |
 | `kit-diffusion-transformer.md` | KiT：扩散 Transformer 金融时序基础模型（精炼） | 2026-10-15 | arXiv:2609.34507 |
 | `xgboost-ceiling.md` | XGBoost 在次日预测上的客观上限（表达力/信噪比/成本口径） | 2026-10-15 | arXiv:2609.34507、实践共识 |
+| `signal-noise-ratio-handling.md` | 低信噪比的理解与处理（特征/数据/模型/评估/执行五侧） | 2026-10-16 | arXiv:2609.34507、baseline_plan |
+| `signal-noise-ratio-handling-detail.md` | 低信噪比处理五侧详解（对应精炼条目的展开版） | 2026-10-16 | 同上 |
 
 ## 关联文档
 
