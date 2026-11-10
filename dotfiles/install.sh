@@ -22,6 +22,7 @@ link_file() {
 }
 
 link_file "$DOTFILES_DIR/zsh/zshrc" "$HOME/.zshrc"
+link_file "$DOTFILES_DIR/zsh/p10k.zsh" "$HOME/.p10k.zsh"
 link_file "$DOTFILES_DIR/tmux/tmux.conf" "$HOME/.tmux.conf"
 
 if [[ ! -f "$HOME/.zshrc.local" ]]; then
@@ -30,6 +31,14 @@ if [[ ! -f "$HOME/.zshrc.local" ]]; then
     echo "created $HOME/.zshrc.local from example - fill in your secrets"
 else
     echo "kept existing $HOME/.zshrc.local"
+fi
+
+if [[ ! -f "$HOME/.tmux.conf.local" ]]; then
+    cp "$DOTFILES_DIR/tmux/tmux.conf.local.example" "$HOME/.tmux.conf.local"
+    chmod 600 "$HOME/.tmux.conf.local"
+    echo "created $HOME/.tmux.conf.local from example"
+else
+    echo "kept existing $HOME/.tmux.conf.local"
 fi
 
 echo "done. For tmux: press prefix + I to install TPM plugins."

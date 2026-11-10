@@ -1,0 +1,14 @@
+# Machine-specific tmux overrides for this device.
+# This file is intentionally NOT tracked in git; keep it per-device.
+# Copy from the repo:  cp dotfiles/tmux/tmux.conf.local.example ~/.tmux.conf.local
+#
+# macOS uses pbcopy for the clipboard (the default in tmux.conf).
+# On Linux, switch copy bindings to xclip/xsel, e.g.:
+#
+#   set -s copy-command 'xclip -selection clipboard'
+#   bind -T copy-mode-vi y send -X copy-pipe-and-cancel 'xclip -selection clipboard'
+#   bind -T copy-mode-vi Enter send -X copy-pipe-and-cancel 'xclip -selection clipboard'
+#   bind -T copy-mode-vi MouseDragEnd1Pane send -X copy-pipe-and-cancel 'xclip -selection clipboard'
+#   set -g default-command "$SHELL"
+#
+# Any other per-device options go here too.

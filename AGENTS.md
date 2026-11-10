@@ -369,6 +369,23 @@ focused on durable engineering constraints. Add project-specific rules as the co
   request validation, and CLI source selection; live easy-tdx fetch is a smoke
   test only.
 
+### dotfiles cross-device sync
+
+- Status: implemented under `dotfiles/` for cross-device sync of the user's shell
+  and terminal configuration. `dotfiles/install.sh` is the idempotent installer:
+  it backs up existing files, symlinks `~/.zshrc`, `~/.p10k.zsh`, and
+  `~/.tmux.conf` into the repo, and creates `~/.zshrc.local` and
+  `~/.tmux.conf.local` from tracked examples when absent.
+- Boundary: the tracked files are the portable configuration; per-device secrets
+  and overrides (credentials, Linux clipboard commands, machine-specific paths)
+  live only in the untracked `~/.zshrc.local` / `~/.tmux.conf.local` files.
+  Per-device tooling (Oh My Zsh, Powerlevel10k, fzf, TPM plugins) is installed on
+  each device and is not tracked. Homebrew-dependent `source` lines in
+  `dotfiles/zsh/zshrc` are guarded so a Linux device degrades gracefully.
+- Verification: `bash -n dotfiles/install.sh`, `zsh -n` on the rc, and a tmux
+  config parse on an isolated server socket; the repo must stay secret-free
+  (`grep -n "accessKey\|JUMP_NEON_PASSWORD" dotfiles/` before pushing).
+
 ## Git Discipline
 
 - Inspect `git status` and the complete diff before committing.

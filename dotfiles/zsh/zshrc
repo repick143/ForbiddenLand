@@ -80,11 +80,12 @@ ZSH_THEME="powerlevel10k/powerlevel10k"
 plugins=(git history-substring-search dirhistory fzf-tab)
 
 # zsh-completions (brew): add to fpath before oh-my-zsh runs compinit
-fpath=(/opt/homebrew/share/zsh-completions $fpath)
+[[ -d /opt/homebrew/share/zsh-completions ]] && fpath=(/opt/homebrew/share/zsh-completions $fpath)
 source $ZSH/oh-my-zsh.sh
 
 # zsh-autosuggestions (loaded after oh-my-zsh plugins)
-source /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh
+[[ -f /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh ]] && \
+  source /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh
 
 # dirhistory: bind Option+Left/Right inside tmux (plugin only handles some terminals)
 if [[ "$TERM_PROGRAM" == "tmux" ]]; then
@@ -201,7 +202,9 @@ export PATH="$HOME/.cargo/bin:$PATH"
 export PLUGINS_REPO=/Users/chenchen/skyclaw/sandbox-bridge/plugins
 export CLI_REPO=/Users/chenchen/skyclaw/sandbox-bridge/skywork-cli
 export CLI_BIN=/tmp/skywork-cli-oma-debug
-source "$(brew --prefix)/etc/profile.d/autojump.sh"
+if command -v brew >/dev/null 2>&1 && [[ -f "$(brew --prefix)/etc/profile.d/autojump.sh" ]]; then
+  source "$(brew --prefix)/etc/profile.d/autojump.sh"
+fi
 export SKYWORK_ENV=test
 
 # neon-arcade jump host
@@ -215,7 +218,8 @@ alias g='glow -p -w 0'
 setopt SHARE_HISTORY
 
 # zsh-syntax-highlighting (must be sourced last)
-source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+[[ -f /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]] && \
+  source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 
 
 # Load machine-specific overrides and secrets (NOT tracked in git).
