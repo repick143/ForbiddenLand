@@ -15,7 +15,11 @@ export ZSH="$HOME/.oh-my-zsh"
 # load a random theme each time Oh My Zsh is loaded, in which case,
 # to know which specific one was loaded, run: echo $RANDOM_THEME
 # See https://github.com/ohmyzsh/ohmyzsh/wiki/Themes
-ZSH_THEME="powerlevel10k/powerlevel10k"
+if [[ -d "$ZSH/custom/themes/powerlevel10k" ]]; then
+  ZSH_THEME="powerlevel10k/powerlevel10k"
+else
+  ZSH_THEME="robbyrussell"
+fi
 
 # Set list of themes to pick from when loading at random
 # Setting this variable when ZSH_THEME=random will cause zsh to load
@@ -77,7 +81,8 @@ ZSH_THEME="powerlevel10k/powerlevel10k"
 # Custom plugins may be added to $ZSH_CUSTOM/plugins/
 # Example format: plugins=(rails git textmate ruby lighthouse)
 # Add wisely, as too many plugins slow down shell startup.
-plugins=(git history-substring-search dirhistory fzf-tab)
+plugins=(git history-substring-search dirhistory fzf)
+[[ -d "$ZSH/custom/plugins/fzf-tab" || -d "$ZSH/plugins/fzf-tab" ]] && plugins+=(fzf-tab)
 
 # zsh-completions (brew): add to fpath before oh-my-zsh runs compinit
 [[ -d /opt/homebrew/share/zsh-completions ]] && fpath=(/opt/homebrew/share/zsh-completions $fpath)
@@ -125,55 +130,73 @@ fi
 alias r="ssh chen.chenn@101.132.96.198"
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
-[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+[[ "$ZSH_THEME" == powerlevel10k/* && -f ~/.p10k.zsh ]] && source ~/.p10k.zsh
 export PYENV_ROOT="$HOME/.pyenv"
 export PATH="$PYENV_ROOT/bin:$PATH"
 
-eval "$(pyenv init -)"
+command -v pyenv >/dev/null 2>&1 && eval "$(pyenv init -)"
 
 # Optionally (when you use pyenv virtualenv)
 
 export FZF_DEFAULT_OPTS='--height 40% --tmux bottom,40% --layout reverse --border top'
-[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+
+# zoxide directory jump: use `j` instead of the default `z`.
+command -v zoxide >/dev/null 2>&1 && eval "$(zoxide init zsh --cmd j)"
 
 # atuin (history recording, SQLite + optional cross-machine sync).
 # Keep atuin from stealing Ctrl+R: rebind ^R back to fzf after loading it.
-eval "$(atuin init zsh --disable-up-arrow --disable-ai)"
-bindkey -M emacs '^R' fzf-history-widget
-bindkey -M viins '^R' fzf-history-widget
+if command -v atuin >/dev/null 2>&1; then
+  eval "$(atuin init zsh --disable-up-arrow)"
+  (( $+widgets[fzf-history-widget] )) && bindkey -M emacs '^R' fzf-history-widget
+  (( $+widgets[fzf-history-widget] )) && bindkey -M viins '^R' fzf-history-widget
+fi
 
-export LC_CTYPE=zh_CN.UTF-8
-export LC_ALL=zh_CN.UTF-8
-export LANGUAGE=zh_CN.UTF-8
-alias -g ack='ack --nogroup --ignore-dir=build64_release --ignore-file=ext:log '
-alias -g f='fd'
-alias -g ackk='ack --ignore-file=match:_test\.go$ '
+if locale -a 2>/dev/null | grep -qiE '^zh_CN\.utf-?8$'; then
+  export LC_CTYPE=zh_CN.UTF-8
+  export LC_ALL=zh_CN.UTF-8
+  export LANGUAGE=zh_CN.UTF-8
+fi
+if command -v ack >/dev/null 2>&1; then
+  alias -g ack='ack --nogroup --ignore-dir=build64_release --ignore-file=ext:log '
+  alias -g ackk='ack --ignore-file=match:_test\.go$ '
+fi
+if command -v fd >/dev/null 2>&1; then
+  alias -g f='fd'
+elif command -v fdfind >/dev/null 2>&1; then
+  alias -g f='fdfind'
+fi
 
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
 
-# pnpm
-export PNPM_HOME="/Users/chenchen/Library/pnpm"
-case ":$PATH:" in
-  *":$PNPM_HOME:"*) ;;
-  *) export PATH="$PNPM_HOME:$PATH" ;;
-esac
+# pnpm (Homebrew/macOS default; override PNPM_HOME in ~/.zshrc.local elsewhere)
+if [[ -d "$HOME/Library/pnpm" ]]; then
+  export PNPM_HOME="$HOME/Library/pnpm"
+  case ":$PATH:" in
+    *":$PNPM_HOME:"*) ;;
+    *) export PATH="$PNPM_HOME:$PATH" ;;
+  esac
+fi
 # pnpm end
 # Avoid Go toolchain version mismatches in IDE terminals.
 unset GOROOT
-export GOENV_ROOT="$HOME/.goenv"
-export PATH="$GOENV_ROOT/bin:$PATH"
-eval "$(goenv init -)"
+if [[ -d "$HOME/.goenv" ]]; then
+  export GOENV_ROOT="$HOME/.goenv"
+  export PATH="$GOENV_ROOT/bin:$PATH"
+  command -v goenv >/dev/null 2>&1 && eval "$(goenv init -)"
+fi
 export GOPATH="${GOPATH:-$HOME/go}"
 export PATH="$GOPATH/bin:$PATH"
 # Java is selected by jenv; do not pin the removed JDK 17 installation here.
-export PATH="$HOME/.jenv/bin:$PATH"
-eval "$(jenv init -)"
+if [[ -d "$HOME/.jenv" ]]; then
+  export PATH="$HOME/.jenv/bin:$PATH"
+  command -v jenv >/dev/null 2>&1 && eval "$(jenv init -)"
+fi
 
 # Added by LM Studio CLI (lms)
+[[ -d "$HOME/.lmstudio/bin" ]] && export PATH="$PATH:$HOME/.lmstudio/bin"
 export HOMEBREW_NO_AUTO_UPDATE=true
-export PATH="$PATH:/Users/chenchen/.lmstudio/bin"
 export HOMEBREW_BOTTLE_DOMAIN=https://mirrors.ustc.edu.cn/homebrew-bottles
 ####### brew安装镜像加速
 # 配置 Homebrew 的 Git 远程仓库加速地址，替换为国内的镜像源
@@ -188,7 +211,15 @@ export HOMEBREW_API_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles/api"
 
 # 隐藏环境变量提示
 export HOMEBREW_NO_ENV_HINTS="1"
-alias o=open
+if command -v open >/dev/null 2>&1; then
+  alias o=open
+elif command -v xdg-open >/dev/null 2>&1; then
+  alias o=xdg-open
+elif command -v wslview >/dev/null 2>&1; then
+  alias o=wslview
+elif command -v explorer.exe >/dev/null 2>&1; then
+  alias o=explorer.exe
+fi
 
 export PATH="/opt/homebrew/opt/mysql-client/bin:$PATH"
 export PATH="/opt/homebrew/opt/mysql-client/bin:$PATH"
@@ -199,8 +230,10 @@ export SKYCLAW_BRAIN_CLI_VERSION=v0.1.11
 
 # Prefer rustup-managed toolchains over Homebrew's Rust.
 export PATH="$HOME/.cargo/bin:$PATH"
-export PLUGINS_REPO=/Users/chenchen/skyclaw/sandbox-bridge/plugins
-export CLI_REPO=/Users/chenchen/skyclaw/sandbox-bridge/skywork-cli
+[[ -d "$HOME/skyclaw/sandbox-bridge/plugins" ]] && \
+  export PLUGINS_REPO="$HOME/skyclaw/sandbox-bridge/plugins"
+[[ -d "$HOME/skyclaw/sandbox-bridge/skywork-cli" ]] && \
+  export CLI_REPO="$HOME/skyclaw/sandbox-bridge/skywork-cli"
 export CLI_BIN=/tmp/skywork-cli-oma-debug
 if command -v brew >/dev/null 2>&1 && [[ -f "$(brew --prefix)/etc/profile.d/autojump.sh" ]]; then
   source "$(brew --prefix)/etc/profile.d/autojump.sh"
@@ -208,11 +241,13 @@ fi
 export SKYWORK_ENV=test
 
 # neon-arcade jump host
-alias jn='sshpass -p "$JUMP_NEON_PASSWORD" jump-neon'
-alias jump='sshpass -p "$JUMP_NEON_PASSWORD" jump-neon'
+if command -v sshpass >/dev/null 2>&1; then
+  alias jn='sshpass -p "$JUMP_NEON_PASSWORD" jump-neon'
+  alias jump='sshpass -p "$JUMP_NEON_PASSWORD" jump-neon'
+fi
 
 # glow markdown viewer
-alias g='glow -p -w 0'
+command -v glow >/dev/null 2>&1 && alias g='glow -p -w 0'
 
 # zsh options
 setopt SHARE_HISTORY
