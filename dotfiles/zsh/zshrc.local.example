@@ -1,0 +1,13 @@
+# Machine-specific overrides and secrets for this device.
+# This file is intentionally NOT tracked in git; keep it per-device.
+# chmod 600 this file.
+
+# Aliyun AccessKey (placeholders - replace with real values)
+export accessKeyID="your-access-key-id"
+export accessKeySecret="your-access-key-secret"
+
+# Jump-host password used by the `jn` / `jump` aliases
+export JUMP_NEON_PASSWORD="your-password"
+
+# Any other machine-local overrides go here, e.g.:
+# export PATH="...:$PATH"
